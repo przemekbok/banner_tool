@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net.Http;
 using UMT.IServices;
 using UMT.IServices.Banner;
@@ -25,6 +25,9 @@ namespace UMT.IoC
         public static void ConfigureCommon(Action<string> showWarningLoggerAction)
         {
             Container.RegisterSingleton<HttpClient>();
+
+            // Register logging service first (as singleton since it manages state)
+            Container.RegisterType<ILogService, LogService>(new ContainerControlledLifetimeManager());
 
             Container.RegisterType<IBannerService, BannerService>();
 
