@@ -1,0 +1,2 @@
+﻿Before using, please complete the data in the 'secrets.xml' file with LoginName and passowrd for the UAP platform and Client Id and Secret for Google OAuth client.
+In addition, the file should be located in the folder specified by the attribute 'userSecretsFile' configuration file.

@@ -1,0 +1,280 @@
+﻿<local:WindowBase x:Class="UMT.UI.MainWindow" 
+        x:TypeArguments="model:MainViewModel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UMT.UI"
+        xmlns:view="clr-namespace:UMT.UI.View"
+        xmlns:model="clr-namespace:UMT.UI.ViewModel"
+        xmlns:converters="clr-namespace:UMT.UI.Converters"
+        mc:Ignorable="d"
+        Height="750" Width="1200">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        <converters:InverseBooleanConverter x:Key="InverseBool"/>
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility"/>
+        <converters:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter"/>
+        <converters:EnumToVisibilityShowOnlyConverter x:Key="EnumToVisibilityShowOnlyConverter"/>
+        <converters:EnumDescriptionConverter x:Key="EnumDescriptionConverter"/>
+        <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style x:Key="NoteStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFFDF5E6"/>
+            <Setter Property="BorderBrush" Value="#FFE4D4A8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,8,0,16"/>
+        </Style>
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF5A7FA6"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="24,12"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#FF486E8A"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#FF3D5E7A"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#FFB0B0B0"/>
+                    <Setter Property="Cursor" Value="Wait"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid Background="#FFF5F5F5">
+        <Border Background="White" Margin="20" CornerRadius="8">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" Opacity="0.1" ShadowDepth="2"/>
+            </Border.Effect>
+            <ScrollViewer>
+                <Grid>
+                    <StackPanel Margin="40">
+                        <!-- Header -->
+                        <StackPanel Margin="0,0,0,24">
+                            <TextBlock FontSize="28" FontWeight="Bold">
+                                SharePoint Banner Manager 🚀
+                            </TextBlock>
+                            <TextBlock FontSize="16" Foreground="#FF666666" Margin="0,8,0,0">
+                                Apply and manage informational banners on SharePoint site collections.
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- Section 3: Manipulate site collection mode -->
+                        <StackPanel Margin="0,0,0,24">
+                            <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                Choose mode
+                            </TextBlock>
+                            <ComboBox x:Name="ModeComboBox"
+                                    Height="40"
+                                    Padding="12,8"
+                                    FontSize="14"
+                                    BorderBrush="#FFDDDDDD"
+                                    VerticalContentAlignment="Center"
+                                    IsEnabled="True"
+                                    ItemsSource="{Binding AvailableOptions}"
+                                    SelectedItem="{Binding SelectedOption, UpdateSourceTrigger=PropertyChanged}"
+                                    Background="#FFF0F0F0">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource EnumDescriptionConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Section 1: SharePoint Site Collection URL -->
+                        <StackPanel Margin="0,0,0,24">
+                            <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                Target SharePoint Site URL
+                            </TextBlock>
+                            <TextBox x:Name="SiteUrlTextBox"
+                                     Text="{Binding SiteUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="40"
+                                     Padding="12,8"
+                                     FontSize="14"
+                                     BorderBrush="#FFDDDDDD"
+                                     VerticalContentAlignment="Center"
+                                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}"/>
+                            <TextBlock Text="Enter the full URL of the site where the banner will be displayed."
+                                       Foreground="#FF888888"
+                                       FontSize="12"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+
+
+                        <StackPanel Visibility="{Binding Path=SelectedOption, Converter={StaticResource EnumToVisibilityShowOnlyConverter}, ConverterParameter=DefaultBannerRedirect, Mode=OneWay}">
+                            <StackPanel Margin="0,0,0,24">
+                                <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                    Redirection URL
+                                </TextBlock>
+                                <TextBox x:Name="RedirectionUrlTextBox"
+                                     Text="{Binding RedirectionUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="40"
+                                     Padding="12,8"
+                                     FontSize="14"
+                                     BorderBrush="#FFDDDDDD"
+                                     VerticalContentAlignment="Center"
+                                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}"/>
+                                <TextBlock Text="Enter the full URL of the site where the banner will be displayed."
+                                       Foreground="#FF888888"
+                                       FontSize="12"
+                                       Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,0,24">
+                                <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                    Redirection Countdown
+                                </TextBlock>
+                                <TextBox x:Name="RedirectionCountdownTextBox"
+                                         Text="{Binding CountdownSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="40"
+                                         Padding="12,8"
+                                         FontSize="14"
+                                         BorderBrush="#FFDDDDDD"
+                                         VerticalContentAlignment="Center"
+                                         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}"/>
+                                <TextBlock Text="Enter the full URL of the site where the banner will be displayed."
+                                           Foreground="#FF888888"
+                                           FontSize="12"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Visibility="{Binding Path=SelectedOption, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter=CustomBanner|RemoveAllAppliedBanners, Mode=OneWay}">
+                            <StackPanel Margin="0,0,0,24">
+                                <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                    Banner Message (Rich Text / HTML)
+                                </TextBlock>
+                                <TextBox x:Name="BannerMessageTextBox"
+                                         Text="{Binding BannerMessage, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="120"
+                                         Padding="12"
+                                         FontSize="14"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         BorderBrush="#FFDDDDDD"
+                                         FontFamily="Consolas"
+                                         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}"/>
+                            </StackPanel>
+
+                        <!-- Note -->
+                            <Border Style="{StaticResource NoteStyle}">
+                                <TextBlock TextWrapping="Wrap" FontSize="13">
+                                    <Bold>Note:</Bold> Banners will be displayed using the standard SharePoint notification bar (typically a yellow bar at the top of the page).
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Visibility="{Binding Path=SelectedOption, Converter={StaticResource EnumToVisibilityShowOnlyConverter}, ConverterParameter=CustomBanner, Mode=OneWay}">
+                            <StackPanel Margin="0,0,0,16">
+                                <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                    Banner JS Code
+                                </TextBlock>
+                                <TextBox x:Name="JsCodeTextBox"
+                                         Text="{Binding JsCode, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="360"
+                                         Padding="12"
+                                         FontSize="13"
+                                         FontFamily="Consolas"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Background="#FF1E1E1E"
+                                         Foreground="#FFCCCCCC"
+                                         BorderBrush="#FF333333"
+                                         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}"/>
+                                <TextBlock Text="This JS will be part of the banner. No additional redirection is added. Use with caution."
+                                           Foreground="#FF888888"
+                                           FontSize="12"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid Margin="0,0,0,24" Visibility="{Binding Path=SelectedOption, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter=RemoveAllAppliedBanners, Mode=OneWay}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="200"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                            </StackPanel>
+
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Command="{Binding ApplyActionCommand}"
+                                    Height="60"
+                                    VerticalAlignment="Bottom"
+                                    HorizontalAlignment="Left"
+                                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}">
+                                <Grid>
+                                    <TextBlock Text="Apply Action" Visibility="{Binding IsProcessing, Converter={StaticResource InverseBoolToVisibility}}"/>
+                                    <StackPanel Orientation="Horizontal" Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Text="Processing..." VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,24" Visibility="{Binding Path=SelectedOption, Converter={StaticResource EnumToVisibilityShowOnlyConverter}, ConverterParameter=RemoveAllAppliedBanners, Mode=OneWay}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Button Grid.Column="0"
+                                    Margin="0,0,0,48"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Command="{Binding RemoveActionCommand}"
+                                    Height="60"
+                                    Width="900"
+                                    VerticalAlignment="Bottom"
+                                    HorizontalAlignment="Center"
+                                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}">
+                                <Grid>
+                                    <TextBlock Text="Clear all applied banners" Visibility="{Binding IsProcessing, Converter={StaticResource InverseBoolToVisibility}}"/>
+                                    <StackPanel Orientation="Horizontal" Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Text="Processing..." VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Processing Overlay -->
+                    <Border Background="#80000000" 
+                            Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibility}}"
+                            CornerRadius="8">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <ProgressBar IsIndeterminate="True" Width="200" Height="24" Margin="0,0,0,16"/>
+                            <TextBlock Text="Applying banner to SharePoint site..." 
+                                       Foreground="White" 
+                                       FontSize="16" 
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</local:WindowBase> 
