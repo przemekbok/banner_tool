@@ -1,0 +1,228 @@
+<local:WindowBase x:Class="UMT.UI.LogsWindow" 
+        x:TypeArguments="model:LogsViewModel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UMT.UI"
+        xmlns:model="clr-namespace:UMT.UI.ViewModel"
+        xmlns:converters="clr-namespace:UMT.UI.Converters"
+        mc:Ignorable="d"
+        Title="Application Logs - SharePoint Banner Manager"
+        Height="700" Width="1000"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBool"/>
+        <Style x:Key="LogEntryStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="0,1,0,0"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Level}" Value="Error">
+                    <Setter Property="Background" Value="#FFFFE6E6"/>
+                    <Setter Property="Foreground" Value="#FF8B0000"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Level}" Value="Warning">
+                    <Setter Property="Background" Value="#FFFFF4E6"/>
+                    <Setter Property="Foreground" Value="#FFFF8C00"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Level}" Value="Success">
+                    <Setter Property="Background" Value="#FFE6F7E6"/>
+                    <Setter Property="Foreground" Value="#FF006400"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Level}" Value="Info">
+                    <Setter Property="Background" Value="#FFF0F8FF"/>
+                    <Setter Property="Foreground" Value="#FF000080"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF5A7FA6"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="4,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#FF486E8A"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#FF3D5E7A"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    
+    <Grid Background="#FFF5F5F5">
+        <Border Background="White" Margin="20" CornerRadius="8">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" Opacity="0.1" ShadowDepth="2"/>
+            </Border.Effect>
+            
+            <Grid Margin="20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                    <TextBlock FontSize="24" FontWeight="Bold" Text="Application Logs"/>
+                    <TextBlock FontSize="14" Foreground="#FF666666" Margin="0,4,0,0"
+                               Text="View and manage application logs and activities"/>
+                </StackPanel>
+
+                <!-- Filters -->
+                <Grid Grid.Row="1" Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="Filter by Level:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    <ComboBox Grid.Column="1" 
+                              Height="32"
+                              Padding="8,4"
+                              FontSize="12"
+                              SelectedItem="{Binding SelectedLogLevel, UpdateSourceTrigger=PropertyChanged}"
+                              BorderBrush="#FFDDDDDD">
+                        <ComboBox.Items>
+                            <ComboBoxItem Content="All Levels" Tag="{x:Null}"/>
+                            <ComboBoxItem Content="Info" Tag="Info"/>
+                            <ComboBoxItem Content="Success" Tag="Success"/>
+                            <ComboBoxItem Content="Warning" Tag="Warning"/>
+                            <ComboBoxItem Content="Error" Tag="Error"/>
+                        </ComboBox.Items>
+                    </ComboBox>
+
+                    <TextBlock Grid.Column="3" Text="Search:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    <TextBox Grid.Column="4" 
+                             Height="32"
+                             Padding="8,4"
+                             FontSize="12"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             BorderBrush="#FFDDDDDD"
+                             VerticalContentAlignment="Center"/>
+
+                    <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="10,0,0,0">
+                        <Button Style="{StaticResource ActionButtonStyle}"
+                                Command="{Binding RefreshLogsCommand}"
+                                Content="Refresh"/>
+                        <Button Style="{StaticResource ActionButtonStyle}"
+                                Command="{Binding ExportLogsCommand}"
+                                Content="Export"/>
+                        <Button Style="{StaticResource ActionButtonStyle}"
+                                Command="{Binding ClearLogsCommand}"
+                                Content="Clear All"
+                                Background="#FFD32F2F"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Logs List -->
+                <ListView Grid.Row="2" 
+                          ItemsSource="{Binding Logs}"
+                          ItemContainerStyle="{StaticResource LogEntryStyle}"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          BorderBrush="#FFDDDDDD"
+                          BorderThickness="1">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Time" Width="140">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss}}" 
+                                                   FontFamily="Consolas" FontSize="11"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Level" Width="80">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Level}" FontWeight="SemiBold" FontSize="11"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Source" Width="120">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Source}" FontSize="11" FontStyle="Italic"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Message" Width="400">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Message}" 
+                                                   TextWrapping="Wrap" 
+                                                   FontSize="11"
+                                                   MaxWidth="380"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Details" Width="200">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Details}" 
+                                                   TextWrapping="Wrap" 
+                                                   FontSize="10"
+                                                   Foreground="#FF666666"
+                                                   MaxWidth="180"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+
+                <!-- Status Bar -->
+                <Border Grid.Row="3" 
+                        Background="#FFF0F0F0" 
+                        BorderBrush="#FFDDDDDD" 
+                        BorderThickness="0,1,0,0"
+                        Padding="10,8"
+                        Margin="0,20,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <TextBlock Grid.Column="0" 
+                                   FontSize="11" 
+                                   Foreground="#FF666666"
+                                   VerticalAlignment="Center">
+                            <Run Text="Showing"/>
+                            <Run Text="{Binding Logs.Count, Mode=OneWay}"/>
+                            <Run Text="log entries"/>
+                        </TextBlock>
+                        
+                        <Button Grid.Column="1" 
+                                Content="Close" 
+                                Style="{StaticResource ActionButtonStyle}"
+                                Click="CloseButton_Click"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</local:WindowBase>
