@@ -147,17 +147,26 @@
     <Compile Include="Constants\Common.cs" />
     <Compile Include="Converters\BooleanConverters.cs" />
     <Compile Include="DataViewModel\MessageBoxDataViewModel.cs" />
+    <Compile Include="ViewModel\LogsViewModel.cs" />
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\ViewModelBase.cs" />
     <Compile Include="View\BindingProxy.cs" />
     <Compile Include="View\UserControlBase.cs" />
     <Compile Include="WindowBase.cs" />
+    <Page Include="LogsWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="LogsWindow.xaml.cs">
+      <DependentUpon>LogsWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="MainWindow.xaml.cs">
@@ -195,11 +204,11 @@
   <ItemGroup>
     <ProjectReference Include="..\UMT.IoC\UMT.IoC.csproj">
       <Project>{CC61BA8E-F01E-40FD-B008-15E8355681D7}</Project>
-      <Name>UMT.IoC</Name>
+      <n>UMT.IoC</n>
     </ProjectReference>
     <ProjectReference Include="..\UMT.IServices\UMT.IServices.csproj">
       <Project>{A6D80B1E-DAEE-4E6A-AC0C-8374B6E1EC32}</Project>
-      <Name>UMT.IServices</Name>
+      <n>UMT.IServices</n>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
