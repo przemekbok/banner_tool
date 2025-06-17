@@ -64,6 +64,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Banner\IBannerService.cs" />
+    <Compile Include="ILogService.cs" />
     <Compile Include="IUserSecretService.cs" />
     <Compile Include="Cache\IMemoryCacheService.cs" />
     <Compile Include="IApplicationSettingsService.cs" />
