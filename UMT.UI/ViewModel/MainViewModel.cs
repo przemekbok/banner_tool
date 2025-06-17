@@ -1,17 +1,22 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using UMT.IServices;
 using UMT.IServices.Banner;
 using UMT.UI.Constants;
+using UMT.UI.DataViewModel;
 using Unity;
 
 namespace UMT.UI.ViewModel
 {
     public class MainViewModel : ViewModelBase
     {
+        private readonly ILogService _logService;
+        private readonly IBannerService _bannerService;
+        
         private string _siteUrl;
         private string _redirectionUrl;
         private int _countdownSeconds;
@@ -20,7 +25,7 @@ namespace UMT.UI.ViewModel
         private bool _isProcessing;
         private ICommand _applyActionCommand;
         private ICommand _removeActionCommand;
-        public IBannerService _bannerService { get; set; }
+        private ICommand _showLogsCommand;
 
         private AppMode _selectedOption;
 
@@ -140,59 +145,105 @@ namespace UMT.UI.ViewModel
             }
         }
 
+        public ICommand ShowLogsCommand
+        {
+            get => _showLogsCommand;
+            set
+            {
+                _showLogsCommand = value;
+                OnPropertyChanged();
+            }
+        }
+
         private bool CanExecuteApplyAction(object parameter)
         {
-            // Can execute if not currently processing
-            return !IsProcessing;
+            // Can execute if not currently processing and required fields are filled
+            return !IsProcessing && !string.IsNullOrWhiteSpace(SiteUrl);
         }
 
         private async Task ExecuteApplyActionAsync(object parameter)
         {
             IsProcessing = true;
+            const string source = "MainViewModel";
 
             try
             {
+                _logService.LogInfo($"User initiated banner action", $"Mode: {SelectedOption}, Site: {SiteUrl}", source);
+
+                var actionDescription = GetActionDescription();
+                
                 switch (SelectedOption) 
                 {
                     case AppMode.DefaultBanner:
-                        _bannerService.CreateAutoRedirectNotification(_siteUrl, null, null, _bannerMessage);
+                        if (string.IsNullOrWhiteSpace(BannerMessage))
+                        {
+                            throw new ArgumentException("Banner message is required for default banner.");
+                        }
+                        _bannerService.CreateAutoRedirectNotification(SiteUrl, null, null, BannerMessage);
                         break;
+                        
                     case AppMode.DefaultBannerRedirect:
-                        _bannerService.CreateAutoRedirectNotification(_siteUrl, _redirectionUrl, _countdownSeconds, _bannerMessage);
+                        if (string.IsNullOrWhiteSpace(BannerMessage))
+                        {
+                            throw new ArgumentException("Banner message is required.");
+                        }
+                        if (string.IsNullOrWhiteSpace(RedirectionUrl))
+                        {
+                            throw new ArgumentException("Redirection URL is required for redirect banner.");
+                        }
+                        if (CountdownSeconds <= 0)
+                        {
+                            throw new ArgumentException("Countdown seconds must be greater than 0.");
+                        }
+                        _bannerService.CreateAutoRedirectNotification(SiteUrl, RedirectionUrl, CountdownSeconds, BannerMessage);
                         break;
+                        
                     case AppMode.CustomBanner:
-                        _bannerService.CreateCustomBanner(_siteUrl, JsCode);
+                        if (string.IsNullOrWhiteSpace(JsCode))
+                        {
+                            throw new ArgumentException("JavaScript code is required for custom banner.");
+                        }
+                        _bannerService.CreateCustomBanner(SiteUrl, JsCode);
                         break;
+                        
                     default:
-                        throw new Exception();
+                        throw new InvalidOperationException($"Unsupported banner mode: {SelectedOption}");
                 }
 
-                //var result = await _bannerManager.ApplyBannerAsync(SiteUrl, BannerMessage, JsCode);
+                _logService.LogSuccess($"Banner action completed successfully", $"Mode: {SelectedOption}, Site: {SiteUrl}", source);
 
-                //if (result.IsSuccess)
-                //{
-                //    MessageBox.Show(
-                //        result.Message,
-                //        "Success",
-                //        MessageBoxButton.OK,
-                //        MessageBoxImage.Information);
-                //}
-                //else
-                //{
-                //    MessageBox.Show(
-                //        result.ErrorMessage,
-                //        "Error",
-                //        MessageBoxButton.OK,
-                //        MessageBoxImage.Error);
-                //}
+                // Show success message
+                ShowMessageBox(new MessageBoxDataViewModel
+                {
+                    Text = $"{actionDescription} applied successfully!\n\nSite: {SiteUrl}",
+                    Caption = "Success",
+                    MessageBoxButton = MessageBoxButton.OK,
+                    MessageBoxIcon = MessageBoxImage.Information
+                });
+            }
+            catch (ArgumentException argEx)
+            {
+                _logService.LogError($"Invalid input for banner action", $"Error: {argEx.Message}, Mode: {SelectedOption}", source);
+                
+                ShowMessageBox(new MessageBoxDataViewModel
+                {
+                    Text = $"Invalid input: {argEx.Message}",
+                    Caption = "Validation Error",
+                    MessageBoxButton = MessageBoxButton.OK,
+                    MessageBoxIcon = MessageBoxImage.Warning
+                });
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    $"An unexpected error occurred: {ex.Message}",
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                _logService.LogError($"Failed to apply banner action", $"Error: {ex.Message}, Mode: {SelectedOption}, Site: {SiteUrl}", source);
+                
+                ShowMessageBox(new MessageBoxDataViewModel
+                {
+                    Text = $"An error occurred while applying the banner:\n\n{ex.Message}\n\nPlease check the logs for more details.",
+                    Caption = "Error",
+                    MessageBoxButton = MessageBoxButton.OK,
+                    MessageBoxIcon = MessageBoxImage.Error
+                });
             }
             finally
             {
@@ -203,37 +254,53 @@ namespace UMT.UI.ViewModel
         private async Task ExecuteRemoveActionAsync(object parameter)
         {
             IsProcessing = true;
+            const string source = "MainViewModel";
 
             try
             {
-                _bannerService.RemoveAllOptions(_siteUrl);
+                if (string.IsNullOrWhiteSpace(SiteUrl))
+                {
+                    throw new ArgumentException("Site URL is required.");
+                }
 
-                //var result = new { Message = "xD", IsSuccess = true, ErrorMessage = "xD" };//await _bannerManager.ApplyBannerAsync(SiteUrl, BannerMessage, JsCode);
+                _logService.LogInfo($"User initiated remove all banners action", $"Site: {SiteUrl}", source);
 
-                //if (result.IsSuccess)
-                //{
-                //    MessageBox.Show(
-                //        result.Message,
-                //        "Success",
-                //        MessageBoxButton.OK,
-                //        MessageBoxImage.Information);
-                //}
-                //else
-                //{
-                //    MessageBox.Show(
-                //        result.ErrorMessage,
-                //        "Error",
-                //        MessageBoxButton.OK,
-                //        MessageBoxImage.Error);
-                //}
+                _bannerService.RemoveAllOptions(SiteUrl);
+
+                _logService.LogSuccess($"Remove all banners action completed successfully", $"Site: {SiteUrl}", source);
+
+                // Show success message
+                ShowMessageBox(new MessageBoxDataViewModel
+                {
+                    Text = $"All banners removed successfully!\n\nSite: {SiteUrl}",
+                    Caption = "Success",
+                    MessageBoxButton = MessageBoxButton.OK,
+                    MessageBoxIcon = MessageBoxImage.Information
+                });
+            }
+            catch (ArgumentException argEx)
+            {
+                _logService.LogError($"Invalid input for remove action", $"Error: {argEx.Message}", source);
+                
+                ShowMessageBox(new MessageBoxDataViewModel
+                {
+                    Text = $"Invalid input: {argEx.Message}",
+                    Caption = "Validation Error",
+                    MessageBoxButton = MessageBoxButton.OK,
+                    MessageBoxIcon = MessageBoxImage.Warning
+                });
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    $"An unexpected error occurred: {ex.Message}",
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
+                _logService.LogError($"Failed to remove banners", $"Error: {ex.Message}, Site: {SiteUrl}", source);
+                
+                ShowMessageBox(new MessageBoxDataViewModel
+                {
+                    Text = $"An error occurred while removing banners:\n\n{ex.Message}\n\nPlease check the logs for more details.",
+                    Caption = "Error",
+                    MessageBoxButton = MessageBoxButton.OK,
+                    MessageBoxIcon = MessageBoxImage.Error
+                });
             }
             finally
             {
@@ -241,8 +308,41 @@ namespace UMT.UI.ViewModel
             }
         }
 
+        private void ExecuteShowLogs(object parameter)
+        {
+            try
+            {
+                var logsWindow = new LogsWindow();
+                logsWindow.Owner = Application.Current.MainWindow;
+                logsWindow.Show();
+                
+                _logService.LogInfo("Logs window opened", null, "MainViewModel");
+            }
+            catch (Exception ex)
+            {
+                _logService.LogError("Failed to open logs window", ex.Message, "MainViewModel");
+                ShowErrorMessageBox($"Failed to open logs window: {ex.Message}");
+            }
+        }
+
+        private string GetActionDescription()
+        {
+            return SelectedOption switch
+            {
+                AppMode.DefaultBanner => "Default banner",
+                AppMode.DefaultBannerRedirect => "Banner with redirect",
+                AppMode.CustomBanner => "Custom banner",
+                _ => "Banner action"
+            };
+        }
+
         public MainViewModel()
         {
+            // Resolve services
+            _logService = Container.Resolve<ILogService>();
+            _bannerService = Container.Resolve<IBannerService>();
+
+            // Initialize properties with default values
             SiteUrl = "https://glob.1sharepoint.roche.com/team/xyz";
             CountdownSeconds = 5;
             BannerMessage = "Important Notice: Scheduled maintenance will occur on [Date]. Please check the status page for updates.";
@@ -251,8 +351,8 @@ namespace UMT.UI.ViewModel
                         // Check if user has opted out of auto-redirect
                         if (localStorage.getItem('disableAutoRedirect') === 'true') return;
                         
-                        var countdown = {_countdownSeconds};
-                        var redirectUrl = '{_redirectionUrl}';
+                        var countdown = {CountdownSeconds};
+                        var redirectUrl = '{RedirectionUrl}';
                         
                         var modal = document.createElement('div');
                         modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:20000;display:flex;align-items:center;justify-content:center;';
@@ -292,7 +392,7 @@ namespace UMT.UI.ViewModel
                         
                         var disableCheckbox = document.createElement('div');
                         disableCheckbox.style.cssText = 'margin-top:20px;font-size:14px;color:#666;';
-                        disableCheckbox.innerHTML = '<label><input type=""checkbox"" id=""disableRedirect""> Don\'t show this again</label>';
+                        disableCheckbox.innerHTML = '<label><input type=\"\"checkbox\"\" id=\"\"disableRedirect\"\"> Don\\'t show this again</label>';
                         
                         content.appendChild(icon);
                         content.appendChild(messageEl);
@@ -318,15 +418,24 @@ namespace UMT.UI.ViewModel
                         document.getElementById('disableRedirect').onchange = function() {{
                             localStorage.setItem('disableAutoRedirect', this.checked.toString());
                         }};
-                    }})();"; ;
+                    }})();";
 
             AvailableOptions = Enum.GetValues(typeof(AppMode)).Cast<AppMode>().ToList();
             SelectedOption = AppMode.DefaultBanner;
 
-            _bannerService = Container.Resolve<IBannerService>();
-
+            // Initialize commands
             ApplyActionCommand = new AsyncRelayCommand(ExecuteApplyActionAsync, CanExecuteApplyAction);
             RemoveActionCommand = new AsyncRelayCommand(ExecuteRemoveActionAsync, CanExecuteApplyAction);
+            ShowLogsCommand = new RelayCommand(ExecuteShowLogs);
+
+            // Log application startup
+            _logService.LogInfo("SharePoint Banner Manager started", null, "MainViewModel");
+        }
+
+        public override void Dispose()
+        {
+            _logService?.LogInfo("SharePoint Banner Manager closed", null, "MainViewModel");
+            base.Dispose();
         }
     }
 
@@ -355,6 +464,34 @@ namespace UMT.UI.ViewModel
         public async void Execute(object parameter)
         {
             await _executeAsync(parameter);
+        }
+    }
+
+    public class RelayCommand : ICommand
+    {
+        private readonly Action<object> _execute;
+        private readonly Predicate<object> _canExecute;
+
+        public RelayCommand(Action<object> execute, Predicate<object> canExecute = null)
+        {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+            _canExecute = canExecute;
+        }
+
+        public event EventHandler CanExecuteChanged
+        {
+            add { CommandManager.RequerySuggested += value; }
+            remove { CommandManager.RequerySuggested -= value; }
+        }
+
+        public bool CanExecute(object parameter)
+        {
+            return _canExecute?.Invoke(parameter) ?? true;
+        }
+
+        public void Execute(object parameter)
+        {
+            _execute(parameter);
         }
     }
 
