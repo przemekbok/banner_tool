@@ -327,13 +327,17 @@ namespace UMT.UI.ViewModel
 
         private string GetActionDescription()
         {
-            return SelectedOption switch
+            switch(SelectedOption)
             {
-                AppMode.DefaultBanner => "Default banner",
-                AppMode.DefaultBannerRedirect => "Banner with redirect",
-                AppMode.CustomBanner => "Custom banner",
-                _ => "Banner action"
-            };
+                case AppMode.DefaultBanner:
+                    return "Default banner";
+                case AppMode.DefaultBannerRedirect:
+                    return "Default banner";
+                case AppMode.CustomBanner:
+                    return "Default banner";
+                default:
+                    return "Banner action";
+            }
         }
 
         public MainViewModel()
@@ -392,7 +396,7 @@ namespace UMT.UI.ViewModel
                         
                         var disableCheckbox = document.createElement('div');
                         disableCheckbox.style.cssText = 'margin-top:20px;font-size:14px;color:#666;';
-                        disableCheckbox.innerHTML = '<label><input type=\"\"checkbox\"\" id=\"\"disableRedirect\"\"> Don\\'t show this again</label>';
+                        disableCheckbox.innerHTML = '<label><input type=""checkbox"" id=""disableRedirect""> Don\\'t show this again</label>';
                         
                         content.appendChild(icon);
                         content.appendChild(messageEl);
@@ -464,34 +468,6 @@ namespace UMT.UI.ViewModel
         public async void Execute(object parameter)
         {
             await _executeAsync(parameter);
-        }
-    }
-
-    public class RelayCommand : ICommand
-    {
-        private readonly Action<object> _execute;
-        private readonly Predicate<object> _canExecute;
-
-        public RelayCommand(Action<object> execute, Predicate<object> canExecute = null)
-        {
-            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-            _canExecute = canExecute;
-        }
-
-        public event EventHandler CanExecuteChanged
-        {
-            add { CommandManager.RequerySuggested += value; }
-            remove { CommandManager.RequerySuggested -= value; }
-        }
-
-        public bool CanExecute(object parameter)
-        {
-            return _canExecute?.Invoke(parameter) ?? true;
-        }
-
-        public void Execute(object parameter)
-        {
-            _execute(parameter);
         }
     }
 
