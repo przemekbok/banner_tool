@@ -397,7 +397,7 @@ namespace UMT.UI.ViewModel
                         
                         var disableCheckbox = document.createElement('div');
                         disableCheckbox.style.cssText = 'margin-top:20px;font-size:14px;color:#666;';
-                        disableCheckbox.innerHTML = '<label><input type=""checkbox"" id=""disableRedirect""> Don\\'t show this again</label>';
+                        disableCheckbox.innerHTML = '<label><input type=""checkbox"" id=""disableRedirect""> Don\'t show this again</label>';
                         
                         content.appendChild(icon);
                         content.appendChild(messageEl);
