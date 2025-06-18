@@ -350,6 +350,7 @@ namespace UMT.UI.ViewModel
             SiteUrl = "https://glob.1sharepoint.roche.com/team/xyz";
             CountdownSeconds = 5;
             BannerMessage = "Important Notice: Scheduled maintenance will occur on [Date]. Please check the status page for updates.";
+            RedirectionUrl = "google.com";
             JsCode = $@"
                     (function() {{
                         // Check if user has opted out of auto-redirect
