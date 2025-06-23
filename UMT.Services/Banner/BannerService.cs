@@ -22,7 +22,6 @@ namespace UMT.Services.Banner
             public const string DefaultBannerWithRedirect = "DefaultBannerWithRedirect";
             public const string CustomBanner = "CustomBanner";
             public const string MigrationBanner = "MigrationBanner";
-            public const string LegacyMigrationBanner = "Migration Banner"; // Legacy name with space
         }
 
         public BannerService(ILogService logService)
@@ -40,15 +39,14 @@ namespace UMT.Services.Banner
 
                 using (var context = new ClientContext(siteUrl))
                 {
-                    // AGGRESSIVE cleanup - remove ALL possible banner actions
-                    RemoveAllPossibleBanners(context, methodName);
+                    // First, remove any existing banner actions to prevent duplicates
+                    RemoveAllExistingBanners(context, methodName);
 
                     UserCustomAction customBanner = context.Web.UserCustomActions.Add();
                     customBanner.Name = Modes.MigrationBanner;
                     customBanner.Title = "Migration Banner";
                     customBanner.Location = "ScriptLink";
-                    customBanner.Sequence = 1; // Use sequence 1 to ensure priority
-                    customBanner.Description = "Auto-generated migration banner - " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    customBanner.Sequence = 50;
 
                     customBanner.ScriptBlock = bannerJs;
 
@@ -76,15 +74,14 @@ namespace UMT.Services.Banner
 
                 using (var context = new ClientContext(siteUrl))
                 {
-                    // AGGRESSIVE cleanup - remove ALL possible banner actions
-                    RemoveAllPossibleBanners(context, methodName);
+                    // First, remove any existing banner actions to prevent duplicates
+                    RemoveAllExistingBanners(context, methodName);
 
                     UserCustomAction autoRedirect = context.Web.UserCustomActions.Add();
                     autoRedirect.Name = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
                     autoRedirect.Title = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
                     autoRedirect.Location = "ScriptLink";
-                    autoRedirect.Sequence = 1; // Use sequence 1 to ensure priority
-                    autoRedirect.Description = "Auto-generated banner - " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    autoRedirect.Sequence = 50;
 
                     string banner = $@"
                         var banner = document.createElement('div');
@@ -122,100 +119,116 @@ namespace UMT.Services.Banner
             }
         }
 
-        private void RemoveAllPossibleBanners(ClientContext context, string callingMethod)
+        private void RemoveAllExistingBanners(ClientContext context, string callingMethod)
         {
             try
             {
-                _logService.LogInfo("Starting aggressive cleanup of ALL possible banner actions", null, callingMethod);
+                _logService.LogInfo("Checking for existing banner actions to remove", null, callingMethod);
 
-                // Load web custom actions
+                // Load ALL custom actions (not just web level)
                 context.Load(context.Web, w => w.UserCustomActions);
+                context.Load(context.Site, s => s.UserCustomActions);
                 context.ExecuteQuery();
 
-                var allActions = context.Web.UserCustomActions.ToList();
-                _logService.LogInfo($"Found {allActions.Count} total custom actions on site", null, callingMethod);
+                var allActionsToRemove = new List<UserCustomAction>();
 
-                // Remove by known names
-                var actionsToRemoveByName = allActions
-                    .Where(a => a.Location == "ScriptLink" && (
-                        a.Name.Equals(Modes.DefaultBanner, StringComparison.OrdinalIgnoreCase) || 
-                        a.Name.Equals(Modes.DefaultBannerWithRedirect, StringComparison.OrdinalIgnoreCase) || 
-                        a.Name.Equals(Modes.CustomBanner, StringComparison.OrdinalIgnoreCase) ||
-                        a.Name.Equals(Modes.MigrationBanner, StringComparison.OrdinalIgnoreCase) ||
-                        a.Name.Equals(Modes.LegacyMigrationBanner, StringComparison.OrdinalIgnoreCase) ||
-                        a.Title.Equals("Migration Banner", StringComparison.OrdinalIgnoreCase) ||
-                        a.Name.Contains("Migration", StringComparison.OrdinalIgnoreCase) ||
-                        a.Name.Contains("Banner", StringComparison.OrdinalIgnoreCase)
-                    ))
+                // Check web-level custom actions
+                var webActionsToRemove = context.Web.UserCustomActions
+                    .Where(a => IsBannerAction(a))
                     .ToList();
+                allActionsToRemove.AddRange(webActionsToRemove);
 
-                // Remove by sequence numbers used by our app
-                var actionsToRemoveBySequence = allActions
-                    .Where(a => a.Location == "ScriptLink" && (
-                        a.Sequence == 1 || 
-                        a.Sequence == 50 || 
-                        a.Sequence == 100
-                    ))
+                // Check site-level custom actions
+                var siteActionsToRemove = context.Site.UserCustomActions
+                    .Where(a => IsBannerAction(a))
                     .ToList();
-
-                // Remove by script content patterns (check for our specific script patterns)
-                var actionsToRemoveByContent = allActions
-                    .Where(a => a.Location == "ScriptLink" && !string.IsNullOrEmpty(a.ScriptBlock) && (
-                        a.ScriptBlock.Contains("migrationRedirectRunning") ||
-                        a.ScriptBlock.Contains("migration-modal") ||
-                        a.ScriptBlock.Contains("data-migration-modal") ||
-                        a.ScriptBlock.Contains("Migration redirect") ||
-                        a.ScriptBlock.Contains("redirectUrl") ||
-                        a.ScriptBlock.Contains("This site is being migrated")
-                    ))
-                    .ToList();
-
-                // Combine all lists and remove duplicates
-                var allActionsToRemove = actionsToRemoveByName
-                    .Union(actionsToRemoveBySequence)
-                    .Union(actionsToRemoveByContent)
-                    .Distinct()
-                    .ToList();
+                allActionsToRemove.AddRange(siteActionsToRemove);
 
                 if (allActionsToRemove.Any())
                 {
-                    _logService.LogInfo($"Found {allActionsToRemove.Count} banner actions to remove", null, callingMethod);
+                    _logService.LogInfo($"Found {allActionsToRemove.Count} existing banner actions to remove", 
+                        $"Web actions: {webActionsToRemove.Count}, Site actions: {siteActionsToRemove.Count}", callingMethod);
 
                     foreach (var action in allActionsToRemove)
                     {
-                        action.DeleteObject();
-                        _logService.LogInfo($"Queued banner action for removal", 
-                            $"Name: {action.Name}, Title: {action.Title}, Sequence: {action.Sequence}, Description: {action.Description}", 
-                            callingMethod);
+                        try
+                        {
+                            action.DeleteObject();
+                            _logService.LogInfo($"Queued existing banner action for removal", 
+                                $"Name: {action.Name}, Title: {action.Title}, Location: {action.Location}, Sequence: {action.Sequence}", callingMethod);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logService.LogWarning($"Failed to queue action for removal", $"Action: {action.Name}, Error: {ex.Message}", callingMethod);
+                        }
                     }
 
                     context.ExecuteQuery();
-                    _logService.LogInfo($"Successfully removed {allActionsToRemove.Count} banner actions", null, callingMethod);
+                    _logService.LogInfo($"Successfully removed {allActionsToRemove.Count} existing banner actions", null, callingMethod);
                 }
                 else
                 {
-                    _logService.LogInfo("No banner actions found to remove", null, callingMethod);
-                }
-
-                // Double-check by loading again and logging remaining actions
-                context.Load(context.Web, w => w.UserCustomActions);
-                context.ExecuteQuery();
-                
-                var remainingActions = context.Web.UserCustomActions
-                    .Where(a => a.Location == "ScriptLink")
-                    .ToList();
-                
-                _logService.LogInfo($"After cleanup: {remainingActions.Count} ScriptLink actions remain", null, callingMethod);
-                foreach (var action in remainingActions)
-                {
-                    _logService.LogInfo($"Remaining action: {action.Name} (Seq: {action.Sequence})", null, callingMethod);
+                    _logService.LogInfo("No existing banner actions found to remove", null, callingMethod);
                 }
             }
             catch (Exception ex)
             {
-                _logService.LogError($"Failed during aggressive banner cleanup", $"Error: {ex.Message}", callingMethod);
+                _logService.LogWarning($"Failed to remove existing banners", $"Error: {ex.Message}", callingMethod);
                 // Don't throw here as this is a cleanup operation - we can continue with creating the new banner
             }
+        }
+
+        private bool IsBannerAction(UserCustomAction action)
+        {
+            if (action == null) return false;
+
+            // Check location
+            if (action.Location != "ScriptLink") return false;
+
+            // Check by name (known banner action names)
+            var knownBannerNames = new[]
+            {
+                Modes.DefaultBanner,
+                Modes.DefaultBannerWithRedirect,
+                Modes.CustomBanner,
+                Modes.MigrationBanner,
+                "Migration Banner" // Title-based check
+            };
+
+            if (knownBannerNames.Any(name => 
+                string.Equals(action.Name, name, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(action.Title, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            // Check by sequence (banner sequences)
+            if (action.Sequence == 50 || action.Sequence == 100)
+            {
+                return true;
+            }
+
+            // Check script content for migration-related keywords
+            if (!string.IsNullOrEmpty(action.ScriptBlock))
+            {
+                var scriptLower = action.ScriptBlock.ToLower();
+                var migrationKeywords = new[]
+                {
+                    "migration",
+                    "migrationredirect",
+                    "data-migration-banner",
+                    "data-migration-modal",
+                    "ff6b35", // Orange banner color
+                    "this site is being migrated"
+                };
+
+                if (migrationKeywords.Any(keyword => scriptLower.Contains(keyword)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void RemoveDefaultBanner(string siteUrl) 
@@ -246,7 +259,7 @@ namespace UMT.Services.Banner
 
                 using (var context = new ClientContext(siteUrl))
                 {
-                    RemoveAllPossibleBanners(context, methodName);
+                    RemoveAllExistingBanners(context, methodName);
                     _logService.LogSuccess($"Successfully removed all banner actions", $"Site: {siteUrl}", methodName);
                 }
             }
@@ -267,7 +280,7 @@ namespace UMT.Services.Banner
 
                 using (var context = new ClientContext(siteUrl))
                 {
-                    RemoveAllPossibleBanners(context, methodName);
+                    RemoveAllExistingBanners(context, methodName);
                     _logService.LogSuccess($"Successfully removed banner actions", $"Site: {siteUrl}", methodName);
                 }
             }
