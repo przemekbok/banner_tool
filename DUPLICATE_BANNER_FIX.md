@@ -2,227 +2,219 @@
 
 ## Problem Description
 
-The SharePoint Banner Manager was experiencing an issue where banners would be displayed multiple times when users navigated through SharePoint, particularly when clicking the cog icon and selecting "Site Contents" from the dropdown menu. This was happening because:
+The SharePoint Banner Manager was experiencing an issue where banners would be displayed multiple times when users navigated through SharePoint, particularly when clicking the cog icon and selecting "Site Contents" from the dropdown menu. 
 
-1. **Multiple Custom Actions**: The system was creating multiple custom actions without removing existing ones
-2. **SharePoint Navigation**: SharePoint's SPA-like navigation was causing the banner script to execute multiple times 
-3. **Insufficient Duplicate Prevention**: The original JavaScript logic wasn't robust enough to handle all SharePoint navigation scenarios
+## Root Cause Analysis
 
-## Root Causes
+After investigation, the main issue was identified:
 
-### 1. Server-Side Issues
-- Custom actions were being added without checking for or removing existing ones
-- Multiple banner custom actions could exist simultaneously on the same site
-- No cleanup mechanism before adding new banners
+### **PRIMARY ISSUE: Multiple Custom Actions Created**
 
-### 2. Client-Side Issues  
-- JavaScript executed on every page load/navigation within SharePoint
-- Original duplicate prevention logic used localStorage but wasn't sufficient for SharePoint's navigation patterns
-- No detection of already running banner instances
-- No cleanup when SharePoint navigation occurred
+In the `DefaultBannerRedirect` mode, the application was creating **TWO separate SharePoint custom actions**:
+
+```csharp
+// This created FIRST custom action
+_bannerService.CreateAutoRedirectNotification(SiteUrl, null, null, BannerMessage);
+
+// This created SECOND custom action  
+_bannerService.CreateCustomBanner(SiteUrl, GenerateCustomJsBanner(...));
+```
+
+**Result:** Two custom actions = Two independent script executions = Duplicate banners on every page load.
+
+### Secondary Issues
+1. **Inadequate Custom Action Cleanup**: Removal wasn't thorough enough to catch all banner types
+2. **SharePoint Navigation**: SPA-like navigation in SharePoint caused additional script executions
+3. **Insufficient Detection Logic**: Wasn't detecting all possible banner custom actions
 
 ## Solution Implementation
 
-### 1. Server-Side Fixes (BannerService.cs)
+### 1. **Fixed Multiple Custom Action Creation**
 
-#### Added `RemoveExistingBanners` Method
+**Before (BROKEN):**
 ```csharp
-private void RemoveExistingBanners(ClientContext context, string callingMethod)
-{
-    // Automatically removes any existing banner custom actions before creating new ones
-    // Prevents accumulation of multiple banner actions
-    // Logs all removal activities for debugging
-}
+case AppMode.DefaultBannerRedirect:
+    // Created 2 separate custom actions!
+    _bannerService.CreateAutoRedirectNotification(SiteUrl, null, null, BannerMessage);
+    _bannerService.CreateCustomBanner(SiteUrl, GenerateCustomJsBanner(...));
+    break;
 ```
 
-#### Enhanced Banner Creation Methods
-- `CreateCustomBanner` now calls `RemoveExistingBanners` first
-- `CreateAutoRedirectNotification` now calls `RemoveExistingBanners` first  
-- Ensures only one banner action exists at any time
-- Added comprehensive logging for all operations
+**After (FIXED):**
+```csharp
+case AppMode.DefaultBannerRedirect:
+    // Creates ONLY 1 custom action that handles both banner and redirect
+    string combinedJs = GenerateCombinedBannerAndRedirectJs(BannerMessage, RedirectionUrl, CountdownSeconds.ToString(), PopupMessage);
+    _bannerService.CreateCustomBanner(SiteUrl, combinedJs);
+    break;
+```
 
-#### Improved Action Detection
-- Added `MigrationBanner` to the known banner modes
-- Enhanced filtering to catch all possible banner custom actions
-- More robust cleanup logic
+### 2. **Enhanced JavaScript with Robust Duplicate Prevention**
 
-### 2. Client-Side Fixes (MainViewModel.cs)
-
-#### Multiple Execution Prevention
+#### Multi-Layer Execution Prevention
 ```javascript
-// Global flag to prevent multiple executions
-var globalKey = 'migrationRedirectRunning';
+// Global execution flag using unique page URL
+var globalKey = 'migrationBannerExecuted_' + window.location.href;
 if (window[globalKey]) {
-    console.log('Migration redirect already running, skipping duplicate execution');
+    console.log('Migration banner already executed for this page, skipping');
     return;
 }
 window[globalKey] = true;
-```
 
-#### Modal Detection and Prevention
-```javascript
-// Check if modal is already displayed on this page load
-var modalDisplayedKey = siteKey + '_modalDisplayed_' + Date.now().toString().slice(-6);
-if (window[modalDisplayedKey]) {
-    console.log('Migration modal already displayed for this page load');
-    window[globalKey] = false;
-    return;
-}
-
-// Check if there's already a migration modal visible in DOM
+// DOM-based duplicate detection
+var existingBanner = document.querySelector('[data-migration-banner="true"]');
 var existingModal = document.querySelector('[data-migration-modal="true"]');
-if (existingModal) {
-    console.log('Migration modal already visible, skipping duplicate');
-    window[globalKey] = false;
+if (existingBanner || existingModal) {
+    console.log('Migration elements already present, skipping');
     return;
 }
 ```
 
-#### SharePoint Navigation Handling
+#### Unique Element Marking
 ```javascript
-// Handle SharePoint navigation events
-var cleanupOnNavigation = function() {
-    console.log('SharePoint navigation detected, cleaning up modal');
-    cleanupModal();
-    document.removeEventListener('keydown', escapeHandler);
-};
-
-// Listen for SharePoint navigation events
-if (window.history && window.history.pushState) {
-    var originalPushState = window.history.pushState;
-    window.history.pushState = function() {
-        originalPushState.apply(window.history, arguments);
-        setTimeout(cleanupOnNavigation, 100);
-    };
-}
-
-// Also listen for hash changes and page unload
-window.addEventListener('hashchange', cleanupOnNavigation);
-window.addEventListener('beforeunload', cleanupOnNavigation);
-```
-
-#### Robust Cleanup Mechanism
-```javascript
-function cleanupModal() {
-    if (timer) {
-        clearInterval(timer);
-        timer = null;
-    }
-    if (modal && modal.parentNode) {
-        modal.parentNode.removeChild(modal);
-    }
-    window[globalKey] = false;
-    console.log('Migration modal cleaned up');
-}
-```
-
-#### DOM Attribute Marking
-```javascript
-// Mark modal with unique attribute for detection
+// All banner elements marked with unique attributes
+banner.setAttribute('data-migration-banner', 'true');
 modal.setAttribute('data-migration-modal', 'true');
+banner.setAttribute('data-execution-key', executionKey);
+```
+
+#### Combined Banner and Modal Logic
+- Single JavaScript creates both the top banner AND the redirect modal
+- Proper timing (1 second delay before modal)
+- Unified cleanup system
+- SharePoint navigation detection
+
+### 3. **Enhanced Server-Side Cleanup**
+
+#### Comprehensive Custom Action Detection
+```csharp
+private bool IsBannerAction(UserCustomAction action)
+{
+    // Check by known names
+    var knownBannerNames = new[] { "DefaultBanner", "MigrationBanner", "CustomBanner" };
+    
+    // Check by sequence numbers
+    if (action.Sequence == 50 || action.Sequence == 100) return true;
+    
+    // Check script content for migration keywords
+    if (action.ScriptBlock?.ToLower().Contains("migration") == true) return true;
+    
+    // Check for specific styling (orange banner color)
+    if (action.ScriptBlock?.Contains("#ff6b35") == true) return true;
+}
+```
+
+#### Multi-Level Action Removal
+```csharp
+// Check BOTH web and site level custom actions
+context.Load(context.Web, w => w.UserCustomActions);
+context.Load(context.Site, s => s.UserCustomActions);
+
+// Remove from both levels
+var webActions = context.Web.UserCustomActions.Where(a => IsBannerAction(a));
+var siteActions = context.Site.UserCustomActions.Where(a => IsBannerAction(a));
 ```
 
 ## Key Improvements
 
-### 1. **Proactive Cleanup**
-- Server automatically removes existing banners before adding new ones
-- Client cleans up modals on SharePoint navigation events
-- Prevents accumulation of duplicate elements
+### ✅ **Single Custom Action Creation**
+- **Before**: DefaultBannerRedirect created 2 custom actions
+- **After**: All modes create exactly 1 custom action
+- **Result**: Eliminates the primary cause of duplicates
 
-### 2. **Multi-Layer Detection**
-- Global execution flags
-- DOM-based modal detection  
-- Page load timestamps
-- Existing modal checks
+### ✅ **Proactive Cleanup**
+- **Before**: Limited removal based on name/sequence only
+- **After**: Multi-criteria detection (name, sequence, content, styling)
+- **Result**: Catches and removes ALL banner-related custom actions
 
-### 3. **SharePoint Navigation Awareness**
-- Hooks into SharePoint's navigation mechanisms
-- Automatic cleanup on page transitions
-- Handles both hash changes and pushState navigation
+### ✅ **Robust JavaScript Execution Control**
+- **Before**: Basic localStorage checks
+- **After**: Multi-layer prevention (global flags, DOM checks, execution keys)
+- **Result**: Prevents any possibility of duplicate execution
 
-### 4. **Comprehensive Logging**
-- All operations are logged on server side
-- Client-side console logging for debugging
-- Easy troubleshooting and monitoring
+### ✅ **Site and Web Level Coverage**
+- **Before**: Only checked web-level custom actions
+- **After**: Checks both site and web level custom actions
+- **Result**: Complete cleanup regardless of where actions were created
 
-### 5. **Graceful Error Handling**
-- Cleanup operations don't throw exceptions
-- Fallback mechanisms for edge cases
-- Robust error recovery
+### ✅ **Enhanced Logging and Debugging**
+- **Before**: Basic success/error messages
+- **After**: Detailed execution tracking and comprehensive troubleshooting tools
+- **Result**: Easy diagnosis of any remaining issues
 
-## Testing Scenarios Addressed
+## Testing Scenarios Verified
 
-### ✅ Cog Menu → Site Contents Navigation
-- Banner no longer duplicates when navigating to Site Contents
-- Previous modal is cleaned up before new one appears
-- User preferences remain intact
+### ✅ **Primary Issue Fixed**
+- **Cog Menu → Site Contents**: No more duplicate banners
+- **Multiple Page Loads**: Only one banner appears total
+- **Rapid Navigation**: No conflicts or multiple modals
 
-### ✅ Multiple Page Loads
-- Only one modal appears per site regardless of page loads
-- Global flags prevent duplicate execution
-- Proper cleanup between navigation events
+### ✅ **Edge Cases Handled**
+- **Browser Refresh**: Clean state, proper banner display
+- **SharePoint Navigation**: Automatic cleanup during navigation
+- **Multiple Tabs**: Each tab maintains independent state
+- **User Preferences**: All localStorage preferences preserved
 
-### ✅ Rapid Navigation
-- Fast clicking/navigation doesn't create multiple modals
-- Cleanup happens automatically
-- No memory leaks or orphaned elements
+### ✅ **All Banner Modes Working**
+- **Default Banner**: Single banner, no duplicates
+- **Banner with Redirect**: Single banner + single modal
+- **Custom Banner**: Single custom script execution
+- **Remove All**: Complete cleanup of all banner types
 
-### ✅ Browser Refresh
-- Modal appears correctly after refresh
-- No conflicts with previous instances
-- Clean slate for each page load
+## Files Modified
 
-## Usage Instructions
+1. **`UMT.UI/ViewModel/MainViewModel.cs`**
+   - Fixed DefaultBannerRedirect to create single custom action
+   - Enhanced JavaScript with comprehensive duplicate prevention
+   - Added execution tracking and cleanup mechanisms
 
-### For Developers
-1. **Deploy the updated code** to your environment
-2. **Existing banners** will be automatically cleaned up when new ones are applied
-3. **Monitor logs** to verify proper operation
-4. **Test navigation scenarios** to confirm fix
+2. **`UMT.Services/Banner/BannerService.cs`**
+   - Enhanced custom action detection logic
+   - Added multi-level cleanup (site + web)
+   - Improved content-based banner detection
 
-### For Users
-1. **No action required** - fix is automatic
-2. **Existing user preferences** (like "don't show again") are preserved
-3. **Banner behavior** remains the same, just without duplicates
+3. **`TROUBLESHOOTING_DUPLICATES.md`**
+   - Comprehensive diagnostic tools
+   - PowerShell scripts for validation
+   - Step-by-step problem resolution
 
-## Compatibility
+## Validation
 
-- ✅ **Backward Compatible**: Existing banners continue to work
-- ✅ **User Preferences**: All localStorage preferences are preserved  
-- ✅ **SharePoint Versions**: Works with all supported SharePoint versions
-- ✅ **Browser Support**: Compatible with all modern browsers
+To verify the fix is working:
 
-## Monitoring and Debugging
-
-### Server-Side Logs
-```
-INFO: Checking for existing banner actions to remove
-INFO: Found 2 existing banner actions to remove  
-INFO: Successfully removed 2 existing banner actions
-INFO: Custom banner created successfully
+### Quick Check
+```javascript
+// Run in browser console on SharePoint site
+console.log('Banners:', document.querySelectorAll('[data-migration-banner="true"]').length);
+console.log('Modals:', document.querySelectorAll('[data-migration-modal="true"]').length);
+// Should show: Banners: 1, Modals: 0 (or 1 if modal is displayed)
 ```
 
-### Client-Side Console Logs
+### PowerShell Check
+```powershell
+# Check custom actions count
+$actions = Get-PnPCustomAction -Scope Web | Where-Object {$_.Location -eq "ScriptLink"}
+Write-Host "ScriptLink actions found: $($actions.Count)"
+# Should show: 1 (or 0 if no banners applied)
 ```
-Migration redirect already running, skipping duplicate execution
-Migration modal already visible, skipping duplicate  
-SharePoint navigation detected, cleaning up modal
-Migration modal cleaned up
-Migration redirect modal displayed successfully
+
+## Deployment Instructions
+
+1. **Deploy the updated code**
+2. **For existing sites with duplicate issues:**
+   - Use "Remove All Banners" first
+   - Wait 5 minutes for SharePoint cache
+   - Apply new banner
+3. **Verify using validation scripts above**
+
+## Emergency Recovery
+
+If issues persist, use the PowerShell cleanup from `TROUBLESHOOTING_DUPLICATES.md`:
+
+```powershell
+# Nuclear option - removes ALL ScriptLink custom actions
+Get-PnPCustomAction -Scope Web | Where-Object {$_.Location -eq "ScriptLink"} | Remove-PnPCustomAction -Force
+Get-PnPCustomAction -Scope Site | Where-Object {$_.Location -eq "ScriptLink"} | Remove-PnPCustomAction -Force
 ```
 
-## Future Enhancements
-
-1. **Performance Optimization**: Consider debouncing for high-frequency navigation
-2. **Analytics Integration**: Track modal display/interaction metrics
-3. **A/B Testing**: Framework for testing different modal designs
-4. **Mobile Optimization**: Enhanced mobile experience for the modal
-
-## Rollback Plan
-
-If issues arise, the fix can be easily rolled back by:
-1. Reverting to the previous branch
-2. Existing banners will continue to work as before
-3. No data loss or user preference loss
-
-This fix ensures a smooth, professional user experience while maintaining all existing functionality and user preferences.
+This fix addresses the root cause of duplicate banners and provides comprehensive prevention mechanisms and diagnostic tools for any edge cases.
