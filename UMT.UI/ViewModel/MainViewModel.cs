@@ -21,6 +21,7 @@ namespace UMT.UI.ViewModel
         private string _redirectionUrl;
         private int _countdownSeconds;
         private string _bannerMessage;
+        private string _popupMessage;
         private string _jsCode;
         private bool _isProcessing;
         private ICommand _applyActionCommand;
@@ -94,6 +95,19 @@ namespace UMT.UI.ViewModel
                 if (_bannerMessage != value)
                 {
                     _bannerMessage = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string PopupMessage
+        {
+            get => _popupMessage;
+            set
+            {
+                if (_popupMessage != value)
+                {
+                    _popupMessage = value;
                     OnPropertyChanged();
                 }
             }
@@ -195,7 +209,8 @@ namespace UMT.UI.ViewModel
                         {
                             throw new ArgumentException("Countdown seconds must be greater than 0.");
                         }
-                        _bannerService.CreateAutoRedirectNotification(SiteUrl, RedirectionUrl, CountdownSeconds, BannerMessage);
+                        _bannerService.CreateAutoRedirectNotification(SiteUrl, null, null, BannerMessage);
+                        _bannerService.CreateCustomBanner(SiteUrl, GenerateCustomJsBanner(CountdownSeconds.ToString(),RedirectionUrl, PopupMessage));
                         break;
                         
                     case AppMode.CustomBanner:
@@ -340,6 +355,137 @@ namespace UMT.UI.ViewModel
             }
         }
 
+        private string GenerateCustomJsBanner(string countdownSeconds, string redirectionUrl, string message)
+        {
+            return $@"
+                    (function() {{
+                        // Create a unique key for this specific site to store preferences
+                        var siteKey = 'migrationRedirect_' + window.location.hostname + window.location.pathname.replace(/\//g, '_');
+                        var disableKey = siteKey + '_disabled';
+                        var declinedKey = siteKey + '_declined';
+                        var lastDeclinedKey = siteKey + '_lastDeclined';
+                        
+                        // Check if user has permanently disabled auto-redirect or recently declined
+                        var isPermanentlyDisabled = localStorage.getItem(disableKey) === 'true';
+                        var hasRecentlyDeclined = false;
+                        
+                        // Check if user declined recently (within 24 hours)
+                        var lastDeclined = localStorage.getItem(lastDeclinedKey);
+                        if (lastDeclined) {{
+                            var declinedTime = parseInt(lastDeclined);
+                            var hoursSinceDeclined = (Date.now() - declinedTime) / (1000 * 60 * 60);
+                            hasRecentlyDeclined = hoursSinceDeclined < 24;
+                        }}
+                        
+                        // If permanently disabled or recently declined, don't show the modal
+                        if (isPermanentlyDisabled || hasRecentlyDeclined) {{
+                            console.log('Migration redirect modal suppressed. Permanently disabled: ' + isPermanentlyDisabled + ', Recently declined: ' + hasRecentlyDeclined);
+                            return;
+                        }}
+                        
+                        var countdown = {countdownSeconds};
+                        var redirectUrl = '{redirectionUrl}';
+                        
+                        var modal = document.createElement('div');
+                        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:20000;display:flex;align-items:center;justify-content:center;';
+                        
+                        var content = document.createElement('div');
+                        content.style.cssText = 'background:white;padding:40px;border-radius:10px;text-align:center;max-width:500px;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+                        
+                        var icon = document.createElement('div');
+                        icon.innerHTML = '⚠️';
+                        icon.style.cssText = 'font-size:48px;margin-bottom:20px;';
+                        
+                        var messageEl = document.createElement('h2');
+                        messageEl.innerHTML = '{message.Replace("\r\n", "<br>").Replace("\n", "<br>").Replace("\r", "<br>")}';
+                        messageEl.style.cssText = 'color:#333;margin-bottom:10px;';
+                        
+                        var subMessageEl = document.createElement('p');
+                        subMessageEl.innerHTML = 'You will be redirected to the new location in';
+                        subMessageEl.style.cssText = 'color:#666;margin-bottom:10px;font-size:16px;';
+                        
+                        var countdownEl = document.createElement('div');
+                        countdownEl.style.cssText = 'font-size:36px;color:#ff6347;margin:20px 0;font-weight:bold;';
+                        countdownEl.innerHTML = countdown + ' seconds';
+                        
+                        var buttonContainer = document.createElement('div');
+                        buttonContainer.style.cssText = 'margin-top:30px;';
+                        
+                        var goNowBtn = document.createElement('button');
+                        goNowBtn.innerHTML = '→ Go to New Site Now';
+                        goNowBtn.style.cssText = 'background:#4CAF50;color:white;border:none;padding:12px 30px;margin:0 10px;border-radius:5px;cursor:pointer;font-size:16px;transition:background 0.3s;';
+                        goNowBtn.onmouseover = function() {{ this.style.background = '#45a049'; }};
+                        goNowBtn.onmouseout = function() {{ this.style.background = '#4CAF50'; }};
+                        goNowBtn.onclick = function() {{
+                            clearInterval(timer);
+                            window.location.href = redirectUrl;
+                        }};
+                        
+                        var cancelBtn = document.createElement('button');
+                        cancelBtn.innerHTML = 'Stay on Current Site';
+                        cancelBtn.style.cssText = 'background:#f44336;color:white;border:none;padding:12px 30px;margin:0 10px;border-radius:5px;cursor:pointer;font-size:16px;transition:background 0.3s;';
+                        cancelBtn.onmouseover = function() {{ this.style.background = '#da190b'; }};
+                        cancelBtn.onmouseout = function() {{ this.style.background = '#f44336'; }};
+                        cancelBtn.onclick = function() {{
+                            clearInterval(timer);
+                            modal.style.display = 'none';
+                            
+                            // Record that user declined
+                            localStorage.setItem(declinedKey, 'true');
+                            localStorage.setItem(lastDeclinedKey, Date.now().toString());
+                            
+                            // Check if the checkbox is checked
+                            var disableCheckbox = document.getElementById('disableRedirect');
+                            if (disableCheckbox && disableCheckbox.checked) {{
+                                localStorage.setItem(disableKey, 'true');
+                                console.log('User opted to permanently disable migration redirects for this site');
+                            }}
+                        }};
+                        
+                        var optionsContainer = document.createElement('div');
+                        optionsContainer.style.cssText = 'margin-top:30px;padding-top:20px;border-top:1px solid #eee;';
+                        
+                        var disableCheckbox = document.createElement('div');
+                        disableCheckbox.style.cssText = 'font-size:14px;color:#666;';
+                        disableCheckbox.innerHTML = '<label style=""cursor:pointer;""><input type=""checkbox"" id=""disableRedirect"" style=""margin-right:8px;cursor:pointer;""> Don\'t show this message again for this site</label>';
+                        
+                        var noteEl = document.createElement('p');
+                        noteEl.style.cssText = 'font-size:12px;color:#999;margin-top:10px;font-style:italic;';
+                        noteEl.innerHTML = 'This preference is saved for this specific site only';
+                        
+                        content.appendChild(icon);
+                        content.appendChild(messageEl);
+                        content.appendChild(subMessageEl);
+                        content.appendChild(countdownEl);
+                        buttonContainer.appendChild(goNowBtn);
+                        buttonContainer.appendChild(cancelBtn);
+                        content.appendChild(buttonContainer);
+                        optionsContainer.appendChild(disableCheckbox);
+                        optionsContainer.appendChild(noteEl);
+                        content.appendChild(optionsContainer);
+                        modal.appendChild(content);
+                        
+                        document.body.appendChild(modal);
+                        
+                        var timer = setInterval(function() {{
+                            countdown--;
+                            countdownEl.innerHTML = countdown + ' second' + (countdown !== 1 ? 's' : '');
+                            
+                            if (countdown <= 0) {{
+                                clearInterval(timer);
+                                window.location.href = redirectUrl;
+                            }}
+                        }}, 1000);
+                        
+                        // Handle escape key to close modal
+                        document.addEventListener('keydown', function(e) {{
+                            if (e.key === 'Escape' && modal.style.display !== 'none') {{
+                                cancelBtn.click();
+                            }}
+                        }});
+                    }})();";
+        }
+
         public MainViewModel()
         {
             // Resolve services
@@ -350,7 +496,7 @@ namespace UMT.UI.ViewModel
             SiteUrl = "https://glob.1sharepoint.roche.com/team/xyz";
             CountdownSeconds = 5;
             BannerMessage = "Important Notice: Scheduled maintenance will occur on [Date]. Please check the status page for updates.";
-            RedirectionUrl = "google.com";
+            RedirectionUrl = "https://google.com";
             JsCode = $@"
                     (function() {{
                         // Create a unique key for this specific site to store preferences

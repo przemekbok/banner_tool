@@ -190,6 +190,23 @@
                             </StackPanel>
                             <StackPanel Margin="0,0,0,24">
                                 <TextBlock Style="{StaticResource SectionHeaderStyle}">
+                                    Popup Message
+                                </TextBlock>
+                                <TextBox x:Name="PopupMessageTextBox"
+                                     Text="{Binding PopupMessage, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="40"
+                                     Padding="12,8"
+                                     FontSize="14"
+                                     BorderBrush="#FFDDDDDD"
+                                     VerticalContentAlignment="Center"
+                                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBool}}"/>
+                                 <TextBlock Text="Enter text for redirection popup"
+                                       Foreground="#FF888888"
+                                       FontSize="12"
+                                       Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,0,24">
+                                <TextBlock Style="{StaticResource SectionHeaderStyle}">
                                     Redirection Countdown (seconds)
                                 </TextBlock>
                                 <TextBox x:Name="RedirectionCountdownTextBox"
