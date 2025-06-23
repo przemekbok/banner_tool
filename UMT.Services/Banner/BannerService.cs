@@ -29,31 +29,42 @@ namespace UMT.Services.Banner
             _logService = logService ?? throw new ArgumentNullException(nameof(logService));
         }
 
-        public void CreateCustomBanner(string siteUrl, string bannerJs)
+        public void CreateCustomBanner(string siteUrl, string bannerJs, bool applyToSubsites = false)
         {
             const string methodName = nameof(CreateCustomBanner);
             
             try
             {
-                _logService.LogInfo($"Starting custom banner creation", $"Site: {siteUrl}", methodName);
+                _logService.LogInfo($"Starting custom banner creation", $"Site: {siteUrl}, Apply to subsites: {applyToSubsites}", methodName);
 
                 using (var context = new ClientContext(siteUrl))
                 {
-                    // First, remove any existing banner actions to prevent duplicates
-                    RemoveAllExistingBanners(context, methodName);
+                    // Apply to main site
+                    ApplyBannerToSite(context, bannerJs, Modes.MigrationBanner, "Migration Banner", methodName);
 
-                    UserCustomAction customBanner = context.Web.UserCustomActions.Add();
-                    customBanner.Name = Modes.MigrationBanner;
-                    customBanner.Title = "Migration Banner";
-                    customBanner.Location = "ScriptLink";
-                    customBanner.Sequence = 50;
+                    // Apply to subsites if requested
+                    if (applyToSubsites)
+                    {
+                        var subsites = GetAllSubsites(context);
+                        _logService.LogInfo($"Found {subsites.Count} subsites to process", null, methodName);
 
-                    customBanner.ScriptBlock = bannerJs;
+                        foreach (var subsite in subsites)
+                        {
+                            try
+                            {
+                                using (var subsiteContext = new ClientContext(subsite))
+                                {
+                                    ApplyBannerToSite(subsiteContext, bannerJs, Modes.MigrationBanner, "Migration Banner", methodName, subsite);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logService.LogWarning($"Failed to apply banner to subsite", $"Subsite: {subsite}, Error: {ex.Message}", methodName);
+                            }
+                        }
+                    }
 
-                    customBanner.Update();
-                    context.ExecuteQuery();
-
-                    _logService.LogSuccess($"Custom banner created successfully", $"Site: {siteUrl}, Action Name: {Modes.MigrationBanner}", methodName);
+                    _logService.LogSuccess($"Custom banner creation completed", $"Site: {siteUrl}, Subsites processed: {applyToSubsites}", methodName);
                 }
             }
             catch (Exception ex)
@@ -63,25 +74,19 @@ namespace UMT.Services.Banner
             }
         }
 
-        public void CreateAutoRedirectNotification(string siteUrl, string redirectUrl = null, int? countdownSeconds = null, string message = null)
+        public void CreateAutoRedirectNotification(string siteUrl, string redirectUrl = null, int? countdownSeconds = null, string message = null, bool applyToSubsites = false)
         {
             const string methodName = nameof(CreateAutoRedirectNotification);
             
             try
             {
                 var bannerType = redirectUrl == null ? "Default Banner" : "Banner with Redirect";
-                _logService.LogInfo($"Starting {bannerType} creation", $"Site: {siteUrl}, Redirect: {redirectUrl ?? "None"}, Countdown: {countdownSeconds?.ToString() ?? "N/A"}", methodName);
+                _logService.LogInfo($"Starting {bannerType} creation", $"Site: {siteUrl}, Redirect: {redirectUrl ?? "None"}, Countdown: {countdownSeconds?.ToString() ?? "N/A"}, Apply to subsites: {applyToSubsites}", methodName);
 
                 using (var context = new ClientContext(siteUrl))
                 {
-                    // First, remove any existing banner actions to prevent duplicates
-                    RemoveAllExistingBanners(context, methodName);
-
-                    UserCustomAction autoRedirect = context.Web.UserCustomActions.Add();
-                    autoRedirect.Name = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
-                    autoRedirect.Title = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
-                    autoRedirect.Location = "ScriptLink";
-                    autoRedirect.Sequence = 50;
+                    var actionName = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
+                    var actionTitle = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
 
                     string banner = $@"
                         var banner = document.createElement('div');
@@ -101,15 +106,37 @@ namespace UMT.Services.Banner
                             }}
                         }}, 1000);";
 
-                    autoRedirect.ScriptBlock = $@"(function() {{
+                    string scriptBlock = $@"(function() {{
                         {banner}
                         {redirect}
                 }})();";
 
-                    autoRedirect.Update();
-                    context.ExecuteQuery();
+                    // Apply to main site
+                    ApplyBannerToSite(context, scriptBlock, actionName, actionTitle, methodName);
 
-                    _logService.LogSuccess($"{bannerType} created successfully", $"Site: {siteUrl}, Action Name: {autoRedirect.Name}", methodName);
+                    // Apply to subsites if requested
+                    if (applyToSubsites)
+                    {
+                        var subsites = GetAllSubsites(context);
+                        _logService.LogInfo($"Found {subsites.Count} subsites to process", null, methodName);
+
+                        foreach (var subsite in subsites)
+                        {
+                            try
+                            {
+                                using (var subsiteContext = new ClientContext(subsite))
+                                {
+                                    ApplyBannerToSite(subsiteContext, scriptBlock, actionName, actionTitle, methodName, subsite);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logService.LogWarning($"Failed to apply banner to subsite", $"Subsite: {subsite}, Error: {ex.Message}", methodName);
+                            }
+                        }
+                    }
+
+                    _logService.LogSuccess($"{bannerType} creation completed", $"Site: {siteUrl}, Subsites processed: {applyToSubsites}", methodName);
                 }
             }
             catch (Exception ex)
@@ -117,6 +144,66 @@ namespace UMT.Services.Banner
                 _logService.LogError($"Failed to create auto-redirect notification", $"Site: {siteUrl}, Error: {ex.Message}", methodName);
                 throw;
             }
+        }
+
+        private void ApplyBannerToSite(ClientContext context, string scriptBlock, string actionName, string actionTitle, string callingMethod, string siteUrl = null)
+        {
+            try
+            {
+                var siteName = siteUrl ?? context.Url;
+                _logService.LogInfo($"Applying banner to site", $"Site: {siteName}", callingMethod);
+
+                // First, remove any existing banner actions to prevent duplicates
+                RemoveAllExistingBanners(context, callingMethod);
+
+                UserCustomAction banner = context.Web.UserCustomActions.Add();
+                banner.Name = actionName;
+                banner.Title = actionTitle;
+                banner.Location = "ScriptLink";
+                banner.Sequence = 50;
+                banner.ScriptBlock = scriptBlock;
+
+                banner.Update();
+                context.ExecuteQuery();
+
+                _logService.LogInfo($"Banner applied successfully", $"Site: {siteName}, Action Name: {actionName}", callingMethod);
+            }
+            catch (Exception ex)
+            {
+                _logService.LogError($"Failed to apply banner to site", $"Site: {siteUrl ?? context.Url}, Error: {ex.Message}", callingMethod);
+                throw;
+            }
+        }
+
+        private List<string> GetAllSubsites(ClientContext context)
+        {
+            var subsites = new List<string>();
+            
+            try
+            {
+                context.Load(context.Web, w => w.Webs);
+                context.ExecuteQuery();
+
+                foreach (var web in context.Web.Webs)
+                {
+                    context.Load(web, w => w.Url, w => w.Webs);
+                    context.ExecuteQuery();
+                    
+                    subsites.Add(web.Url);
+
+                    // Recursively get subsites of subsites
+                    using (var subsiteContext = new ClientContext(web.Url))
+                    {
+                        subsites.AddRange(GetAllSubsites(subsiteContext));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logService.LogWarning($"Failed to retrieve subsites", $"Error: {ex.Message}", "GetAllSubsites");
+            }
+
+            return subsites;
         }
 
         private void RemoveAllExistingBanners(ClientContext context, string callingMethod)
@@ -231,62 +318,48 @@ namespace UMT.Services.Banner
             return false;
         }
 
-        public void RemoveDefaultBanner(string siteUrl) 
-        {
-            const string methodName = nameof(RemoveDefaultBanner);
-            _logService.LogWarning("Method not implemented", $"Site: {siteUrl}", methodName);
-        }
-
-        public void RemoveDefaultBannerWithRedirect(string siteUrl) 
-        {
-            const string methodName = nameof(RemoveDefaultBannerWithRedirect);
-            _logService.LogWarning("Method not implemented", $"Site: {siteUrl}", methodName);
-        }
-
-        public void RemoveCustomBanner(string siteUrl)
-        { 
-            const string methodName = nameof(RemoveCustomBanner);
-            _logService.LogWarning("Method not implemented", $"Site: {siteUrl}", methodName);
-        }
-
-        public void RemoveAllOptions(string siteUrl)
+        public void RemoveAllOptions(string siteUrl, bool removeFromSubsites = false)
         {
             const string methodName = nameof(RemoveAllOptions);
             
             try
             {
-                _logService.LogInfo($"Starting removal of all banner options", $"Site: {siteUrl}", methodName);
+                _logService.LogInfo($"Starting removal of all banner options", $"Site: {siteUrl}, Remove from subsites: {removeFromSubsites}", methodName);
 
                 using (var context = new ClientContext(siteUrl))
                 {
+                    // Remove from main site
                     RemoveAllExistingBanners(context, methodName);
-                    _logService.LogSuccess($"Successfully removed all banner actions", $"Site: {siteUrl}", methodName);
+
+                    // Remove from subsites if requested
+                    if (removeFromSubsites)
+                    {
+                        var subsites = GetAllSubsites(context);
+                        _logService.LogInfo($"Found {subsites.Count} subsites to process for removal", null, methodName);
+
+                        foreach (var subsite in subsites)
+                        {
+                            try
+                            {
+                                using (var subsiteContext = new ClientContext(subsite))
+                                {
+                                    _logService.LogInfo($"Removing banners from subsite", $"Subsite: {subsite}", methodName);
+                                    RemoveAllExistingBanners(subsiteContext, methodName);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logService.LogWarning($"Failed to remove banners from subsite", $"Subsite: {subsite}, Error: {ex.Message}", methodName);
+                            }
+                        }
+                    }
+
+                    _logService.LogSuccess($"Successfully removed all banner actions", $"Site: {siteUrl}, Subsites processed: {removeFromSubsites}", methodName);
                 }
             }
             catch (Exception ex)
             {
                 _logService.LogError($"Failed to remove banner options", $"Site: {siteUrl}, Error: {ex.Message}", methodName);
-                throw;
-            }
-        }
-
-        public void RemoveOption(string siteUrl, string customActionName)
-        {
-            const string methodName = nameof(RemoveOption);
-            
-            try
-            {
-                _logService.LogInfo($"Starting removal of specific banner option", $"Site: {siteUrl}, Action: {customActionName}", methodName);
-
-                using (var context = new ClientContext(siteUrl))
-                {
-                    RemoveAllExistingBanners(context, methodName);
-                    _logService.LogSuccess($"Successfully removed banner actions", $"Site: {siteUrl}", methodName);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logService.LogError($"Failed to remove specific banner option", $"Site: {siteUrl}, Action: {customActionName}, Error: {ex.Message}", methodName);
                 throw;
             }
         }
