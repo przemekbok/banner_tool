@@ -359,11 +359,29 @@ namespace UMT.UI.ViewModel
         {
             return $@"
                     (function() {{
+                        // Prevent multiple executions - check if already running
+                        var globalKey = 'migrationRedirectRunning';
+                        if (window[globalKey]) {{
+                            console.log('Migration redirect already running, skipping duplicate execution');
+                            return;
+                        }}
+                        
+                        // Mark as running immediately
+                        window[globalKey] = true;
+                        
                         // Create a unique key for this specific site to store preferences
                         var siteKey = 'migrationRedirect_' + window.location.hostname + window.location.pathname.replace(/\//g, '_');
                         var disableKey = siteKey + '_disabled';
                         var declinedKey = siteKey + '_declined';
                         var lastDeclinedKey = siteKey + '_lastDeclined';
+                        var modalDisplayedKey = siteKey + '_modalDisplayed_' + Date.now().toString().slice(-6); // Include timestamp for uniqueness
+                        
+                        // Check if modal is already displayed on this page load
+                        if (window[modalDisplayedKey]) {{
+                            console.log('Migration modal already displayed for this page load');
+                            window[globalKey] = false;
+                            return;
+                        }}
                         
                         // Check if user has permanently disabled auto-redirect or recently declined
                         var isPermanentlyDisabled = localStorage.getItem(disableKey) === 'true';
@@ -380,13 +398,26 @@ namespace UMT.UI.ViewModel
                         // If permanently disabled or recently declined, don't show the modal
                         if (isPermanentlyDisabled || hasRecentlyDeclined) {{
                             console.log('Migration redirect modal suppressed. Permanently disabled: ' + isPermanentlyDisabled + ', Recently declined: ' + hasRecentlyDeclined);
+                            window[globalKey] = false;
                             return;
                         }}
+                        
+                        // Check if there's already a migration modal visible
+                        var existingModal = document.querySelector('[data-migration-modal=""true""]');
+                        if (existingModal) {{
+                            console.log('Migration modal already visible, skipping duplicate');
+                            window[globalKey] = false;
+                            return;
+                        }}
+                        
+                        // Mark that modal is being displayed
+                        window[modalDisplayedKey] = true;
                         
                         var countdown = {countdownSeconds};
                         var redirectUrl = '{redirectionUrl}';
                         
                         var modal = document.createElement('div');
+                        modal.setAttribute('data-migration-modal', 'true');
                         modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:20000;display:flex;align-items:center;justify-content:center;';
                         
                         var content = document.createElement('div');
@@ -411,13 +442,27 @@ namespace UMT.UI.ViewModel
                         var buttonContainer = document.createElement('div');
                         buttonContainer.style.cssText = 'margin-top:30px;';
                         
+                        var timer;
+                        
+                        function cleanupModal() {{
+                            if (timer) {{
+                                clearInterval(timer);
+                                timer = null;
+                            }}
+                            if (modal && modal.parentNode) {{
+                                modal.parentNode.removeChild(modal);
+                            }}
+                            window[globalKey] = false;
+                            console.log('Migration modal cleaned up');
+                        }}
+                        
                         var goNowBtn = document.createElement('button');
                         goNowBtn.innerHTML = '→ Go to New Site Now';
                         goNowBtn.style.cssText = 'background:#4CAF50;color:white;border:none;padding:12px 30px;margin:0 10px;border-radius:5px;cursor:pointer;font-size:16px;transition:background 0.3s;';
                         goNowBtn.onmouseover = function() {{ this.style.background = '#45a049'; }};
                         goNowBtn.onmouseout = function() {{ this.style.background = '#4CAF50'; }};
                         goNowBtn.onclick = function() {{
-                            clearInterval(timer);
+                            cleanupModal();
                             window.location.href = redirectUrl;
                         }};
                         
@@ -427,8 +472,7 @@ namespace UMT.UI.ViewModel
                         cancelBtn.onmouseover = function() {{ this.style.background = '#da190b'; }};
                         cancelBtn.onmouseout = function() {{ this.style.background = '#f44336'; }};
                         cancelBtn.onclick = function() {{
-                            clearInterval(timer);
-                            modal.style.display = 'none';
+                            cleanupModal();
                             
                             // Record that user declined
                             localStorage.setItem(declinedKey, 'true');
@@ -467,22 +511,46 @@ namespace UMT.UI.ViewModel
                         
                         document.body.appendChild(modal);
                         
-                        var timer = setInterval(function() {{
+                        timer = setInterval(function() {{
                             countdown--;
                             countdownEl.innerHTML = countdown + ' second' + (countdown !== 1 ? 's' : '');
                             
                             if (countdown <= 0) {{
-                                clearInterval(timer);
+                                cleanupModal();
                                 window.location.href = redirectUrl;
                             }}
                         }}, 1000);
                         
                         // Handle escape key to close modal
-                        document.addEventListener('keydown', function(e) {{
+                        var escapeHandler = function(e) {{
                             if (e.key === 'Escape' && modal.style.display !== 'none') {{
                                 cancelBtn.click();
+                                document.removeEventListener('keydown', escapeHandler);
                             }}
-                        }});
+                        }};
+                        document.addEventListener('keydown', escapeHandler);
+                        
+                        // Handle SharePoint navigation events
+                        var cleanupOnNavigation = function() {{
+                            console.log('SharePoint navigation detected, cleaning up modal');
+                            cleanupModal();
+                            document.removeEventListener('keydown', escapeHandler);
+                        }};
+                        
+                        // Listen for SharePoint navigation events
+                        if (window.history && window.history.pushState) {{
+                            var originalPushState = window.history.pushState;
+                            window.history.pushState = function() {{
+                                originalPushState.apply(window.history, arguments);
+                                setTimeout(cleanupOnNavigation, 100);
+                            }};
+                        }}
+                        
+                        // Also listen for hash changes and page unload
+                        window.addEventListener('hashchange', cleanupOnNavigation);
+                        window.addEventListener('beforeunload', cleanupOnNavigation);
+                        
+                        console.log('Migration redirect modal displayed successfully');
                     }})();";
         }
 
@@ -497,13 +565,32 @@ namespace UMT.UI.ViewModel
             CountdownSeconds = 5;
             BannerMessage = "Important Notice: Scheduled maintenance will occur on [Date]. Please check the status page for updates.";
             RedirectionUrl = "https://google.com";
+            PopupMessage = "This site is being migrated";
             JsCode = $@"
                     (function() {{
+                        // Prevent multiple executions - check if already running
+                        var globalKey = 'migrationRedirectRunning';
+                        if (window[globalKey]) {{
+                            console.log('Migration redirect already running, skipping duplicate execution');
+                            return;
+                        }}
+                        
+                        // Mark as running immediately
+                        window[globalKey] = true;
+                        
                         // Create a unique key for this specific site to store preferences
                         var siteKey = 'migrationRedirect_' + window.location.hostname + window.location.pathname.replace(/\//g, '_');
                         var disableKey = siteKey + '_disabled';
                         var declinedKey = siteKey + '_declined';
                         var lastDeclinedKey = siteKey + '_lastDeclined';
+                        var modalDisplayedKey = siteKey + '_modalDisplayed_' + Date.now().toString().slice(-6); // Include timestamp for uniqueness
+                        
+                        // Check if modal is already displayed on this page load
+                        if (window[modalDisplayedKey]) {{
+                            console.log('Migration modal already displayed for this page load');
+                            window[globalKey] = false;
+                            return;
+                        }}
                         
                         // Check if user has permanently disabled auto-redirect or recently declined
                         var isPermanentlyDisabled = localStorage.getItem(disableKey) === 'true';
@@ -520,13 +607,26 @@ namespace UMT.UI.ViewModel
                         // If permanently disabled or recently declined, don't show the modal
                         if (isPermanentlyDisabled || hasRecentlyDeclined) {{
                             console.log('Migration redirect modal suppressed. Permanently disabled: ' + isPermanentlyDisabled + ', Recently declined: ' + hasRecentlyDeclined);
+                            window[globalKey] = false;
                             return;
                         }}
+                        
+                        // Check if there's already a migration modal visible
+                        var existingModal = document.querySelector('[data-migration-modal=""true""]');
+                        if (existingModal) {{
+                            console.log('Migration modal already visible, skipping duplicate');
+                            window[globalKey] = false;
+                            return;
+                        }}
+                        
+                        // Mark that modal is being displayed
+                        window[modalDisplayedKey] = true;
                         
                         var countdown = {CountdownSeconds};
                         var redirectUrl = '{RedirectionUrl}';
                         
                         var modal = document.createElement('div');
+                        modal.setAttribute('data-migration-modal', 'true');
                         modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:20000;display:flex;align-items:center;justify-content:center;';
                         
                         var content = document.createElement('div');
@@ -551,13 +651,27 @@ namespace UMT.UI.ViewModel
                         var buttonContainer = document.createElement('div');
                         buttonContainer.style.cssText = 'margin-top:30px;';
                         
+                        var timer;
+                        
+                        function cleanupModal() {{
+                            if (timer) {{
+                                clearInterval(timer);
+                                timer = null;
+                            }}
+                            if (modal && modal.parentNode) {{
+                                modal.parentNode.removeChild(modal);
+                            }}
+                            window[globalKey] = false;
+                            console.log('Migration modal cleaned up');
+                        }}
+                        
                         var goNowBtn = document.createElement('button');
                         goNowBtn.innerHTML = '→ Go to New Site Now';
                         goNowBtn.style.cssText = 'background:#4CAF50;color:white;border:none;padding:12px 30px;margin:0 10px;border-radius:5px;cursor:pointer;font-size:16px;transition:background 0.3s;';
                         goNowBtn.onmouseover = function() {{ this.style.background = '#45a049'; }};
                         goNowBtn.onmouseout = function() {{ this.style.background = '#4CAF50'; }};
                         goNowBtn.onclick = function() {{
-                            clearInterval(timer);
+                            cleanupModal();
                             window.location.href = redirectUrl;
                         }};
                         
@@ -567,8 +681,7 @@ namespace UMT.UI.ViewModel
                         cancelBtn.onmouseover = function() {{ this.style.background = '#da190b'; }};
                         cancelBtn.onmouseout = function() {{ this.style.background = '#f44336'; }};
                         cancelBtn.onclick = function() {{
-                            clearInterval(timer);
-                            modal.style.display = 'none';
+                            cleanupModal();
                             
                             // Record that user declined
                             localStorage.setItem(declinedKey, 'true');
@@ -607,22 +720,46 @@ namespace UMT.UI.ViewModel
                         
                         document.body.appendChild(modal);
                         
-                        var timer = setInterval(function() {{
+                        timer = setInterval(function() {{
                             countdown--;
                             countdownEl.innerHTML = countdown + ' second' + (countdown !== 1 ? 's' : '');
                             
                             if (countdown <= 0) {{
-                                clearInterval(timer);
+                                cleanupModal();
                                 window.location.href = redirectUrl;
                             }}
                         }}, 1000);
                         
                         // Handle escape key to close modal
-                        document.addEventListener('keydown', function(e) {{
+                        var escapeHandler = function(e) {{
                             if (e.key === 'Escape' && modal.style.display !== 'none') {{
                                 cancelBtn.click();
+                                document.removeEventListener('keydown', escapeHandler);
                             }}
-                        }});
+                        }};
+                        document.addEventListener('keydown', escapeHandler);
+                        
+                        // Handle SharePoint navigation events
+                        var cleanupOnNavigation = function() {{
+                            console.log('SharePoint navigation detected, cleaning up modal');
+                            cleanupModal();
+                            document.removeEventListener('keydown', escapeHandler);
+                        }};
+                        
+                        // Listen for SharePoint navigation events
+                        if (window.history && window.history.pushState) {{
+                            var originalPushState = window.history.pushState;
+                            window.history.pushState = function() {{
+                                originalPushState.apply(window.history, arguments);
+                                setTimeout(cleanupOnNavigation, 100);
+                            }};
+                        }}
+                        
+                        // Also listen for hash changes and page unload
+                        window.addEventListener('hashchange', cleanupOnNavigation);
+                        window.addEventListener('beforeunload', cleanupOnNavigation);
+                        
+                        console.log('Migration redirect modal displayed successfully');
                     }})();";
 
             AvailableOptions = Enum.GetValues(typeof(AppMode)).Cast<AppMode>().ToList();
