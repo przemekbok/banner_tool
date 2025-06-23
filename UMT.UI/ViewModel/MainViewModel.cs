@@ -24,6 +24,7 @@ namespace UMT.UI.ViewModel
         private string _popupMessage;
         private string _jsCode;
         private bool _isProcessing;
+        private bool _applyToSubsites;
         private ICommand _applyActionCommand;
         private ICommand _removeActionCommand;
         private ICommand _showLogsCommand;
@@ -139,6 +140,19 @@ namespace UMT.UI.ViewModel
             }
         }
 
+        public bool ApplyToSubsites
+        {
+            get => _applyToSubsites;
+            set
+            {
+                if (_applyToSubsites != value)
+                {
+                    _applyToSubsites = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public ICommand ApplyActionCommand
         {
             get => _applyActionCommand;
@@ -182,7 +196,7 @@ namespace UMT.UI.ViewModel
 
             try
             {
-                _logService.LogInfo($"User initiated banner action", $"Mode: {SelectedOption}, Site: {SiteUrl}", source);
+                _logService.LogInfo($"User initiated banner action", $"Mode: {SelectedOption}, Site: {SiteUrl}, Apply to subsites: {ApplyToSubsites}", source);
 
                 var actionDescription = GetActionDescription();
                 
@@ -193,7 +207,7 @@ namespace UMT.UI.ViewModel
                         {
                             throw new ArgumentException("Banner message is required for default banner.");
                         }
-                        _bannerService.CreateAutoRedirectNotification(SiteUrl, null, null, BannerMessage);
+                        _bannerService.CreateAutoRedirectNotification(SiteUrl, null, null, BannerMessage, ApplyToSubsites);
                         break;
                         
                     case AppMode.DefaultBannerRedirect:
@@ -211,7 +225,7 @@ namespace UMT.UI.ViewModel
                         }
                         // Create ONLY ONE custom action that combines both banner and redirect functionality
                         string combinedJs = GenerateCombinedBannerAndRedirectJs(BannerMessage, RedirectionUrl, CountdownSeconds.ToString(), PopupMessage);
-                        _bannerService.CreateCustomBanner(SiteUrl, combinedJs);
+                        _bannerService.CreateCustomBanner(SiteUrl, combinedJs, ApplyToSubsites);
                         break;
                         
                     case AppMode.CustomBanner:
@@ -219,19 +233,20 @@ namespace UMT.UI.ViewModel
                         {
                             throw new ArgumentException("JavaScript code is required for custom banner.");
                         }
-                        _bannerService.CreateCustomBanner(SiteUrl, JsCode);
+                        _bannerService.CreateCustomBanner(SiteUrl, JsCode, ApplyToSubsites);
                         break;
                         
                     default:
                         throw new InvalidOperationException($"Unsupported banner mode: {SelectedOption}");
                 }
 
-                _logService.LogSuccess($"Banner action completed successfully", $"Mode: {SelectedOption}, Site: {SiteUrl}", source);
+                _logService.LogSuccess($"Banner action completed successfully", $"Mode: {SelectedOption}, Site: {SiteUrl}, Applied to subsites: {ApplyToSubsites}", source);
 
                 // Show success message
+                var subsiteMessage = ApplyToSubsites ? "\n\nThe banner has also been applied to all subsites." : "";
                 ShowMessageBox(new MessageBoxDataViewModel
                 {
-                    Text = $"{actionDescription} applied successfully!\n\nSite: {SiteUrl}",
+                    Text = $"{actionDescription} applied successfully!\n\nSite: {SiteUrl}{subsiteMessage}",
                     Caption = "Success",
                     MessageBoxButton = MessageBoxButton.OK,
                     MessageBoxIcon = MessageBoxImage.Information
@@ -279,16 +294,17 @@ namespace UMT.UI.ViewModel
                     throw new ArgumentException("Site URL is required.");
                 }
 
-                _logService.LogInfo($"User initiated remove all banners action", $"Site: {SiteUrl}", source);
+                _logService.LogInfo($"User initiated remove all banners action", $"Site: {SiteUrl}, Remove from subsites: {ApplyToSubsites}", source);
 
-                _bannerService.RemoveAllOptions(SiteUrl);
+                _bannerService.RemoveAllOptions(SiteUrl, ApplyToSubsites);
 
-                _logService.LogSuccess($"Remove all banners action completed successfully", $"Site: {SiteUrl}", source);
+                _logService.LogSuccess($"Remove all banners action completed successfully", $"Site: {SiteUrl}, Removed from subsites: {ApplyToSubsites}", source);
 
                 // Show success message
+                var subsiteMessage = ApplyToSubsites ? "\n\nAll banners have also been removed from subsites." : "";
                 ShowMessageBox(new MessageBoxDataViewModel
                 {
-                    Text = $"All banners removed successfully!\n\nSite: {SiteUrl}",
+                    Text = $"All banners removed successfully!\n\nSite: {SiteUrl}{subsiteMessage}",
                     Caption = "Success",
                     MessageBoxButton = MessageBoxButton.OK,
                     MessageBoxIcon = MessageBoxImage.Information
@@ -589,6 +605,7 @@ namespace UMT.UI.ViewModel
             RedirectionUrl = "https://google.com";
             PopupMessage = "This site is being migrated";
             JsCode = GenerateCombinedBannerAndRedirectJs("Site Migration Notice", "https://google.com", "5", "This site is being migrated");
+            ApplyToSubsites = false; // Default to false for backward compatibility
 
             AvailableOptions = Enum.GetValues(typeof(AppMode)).Cast<AppMode>().ToList();
             SelectedOption = AppMode.DefaultBanner;
