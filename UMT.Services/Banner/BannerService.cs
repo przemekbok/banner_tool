@@ -42,7 +42,7 @@ namespace UMT.Services.Banner
                     // First, remove any existing banner actions to prevent duplicates
                     RemoveAllExistingBanners(context, methodName);
 
-                    UserCustomAction customBanner = context.Web.UserCustomActions.Add();
+                    UserCustomAction customBanner = context.Site.UserCustomActions.Add();
                     customBanner.Name = Modes.MigrationBanner;
                     customBanner.Title = "Migration Banner";
                     customBanner.Location = "ScriptLink";
@@ -77,7 +77,7 @@ namespace UMT.Services.Banner
                     // First, remove any existing banner actions to prevent duplicates
                     RemoveAllExistingBanners(context, methodName);
 
-                    UserCustomAction autoRedirect = context.Web.UserCustomActions.Add();
+                    UserCustomAction autoRedirect = context.Site.UserCustomActions.Add();
                     autoRedirect.Name = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
                     autoRedirect.Title = redirectUrl == null ? Modes.DefaultBanner : Modes.DefaultBannerWithRedirect;
                     autoRedirect.Location = "ScriptLink";
