@@ -457,6 +457,28 @@ namespace UMT.UI.ViewModel
                         
                         var timer;
                         
+                        // === SEPARATE CLEANUP FUNCTIONS ===
+                        
+                        // Only removes the modal (used when user declines redirect)
+                        function cleanupModal() {{
+                            console.log('Cleaning up modal only, keeping banner visible');
+                            
+                            // Clear timer
+                            if (timer) {{
+                                clearInterval(timer);
+                                timer = null;
+                            }}
+                            
+                            // Remove modal only
+                            if (modal && modal.parentNode) {{
+                                modal.parentNode.removeChild(modal);
+                            }}
+                            
+                            // Banner remains visible - do NOT remove it
+                            console.log('Modal removed, banner remains displayed');
+                        }}
+                        
+                        // Removes everything (used for redirect or navigation)
                         function cleanupAll() {{
                             console.log('Cleaning up all migration elements');
                             
@@ -487,7 +509,7 @@ namespace UMT.UI.ViewModel
                         goNowBtn.onmouseover = function() {{ this.style.background = '#45a049'; }};
                         goNowBtn.onmouseout = function() {{ this.style.background = '#4CAF50'; }};
                         goNowBtn.onclick = function() {{
-                            cleanupAll();
+                            cleanupAll(); // Full cleanup for redirect
                             window.location.href = redirectUrlFinal;
                         }};
                         
@@ -497,7 +519,7 @@ namespace UMT.UI.ViewModel
                         cancelBtn.onmouseover = function() {{ this.style.background = '#da190b'; }};
                         cancelBtn.onmouseout = function() {{ this.style.background = '#f44336'; }};
                         cancelBtn.onclick = function() {{
-                            cleanupAll();
+                            cleanupModal(); // Only cleanup modal, keep banner visible
                             
                             // Record user choice
                             localStorage.setItem(lastDeclinedKey, Date.now().toString());
@@ -518,7 +540,7 @@ namespace UMT.UI.ViewModel
                         
                         var noteEl = document.createElement('p');
                         noteEl.style.cssText = 'font-size:12px;color:#999;margin-top:10px;font-style:italic;';
-                        noteEl.innerHTML = 'This preference is saved for this specific site only';
+                        noteEl.innerHTML = 'This preference is saved for this specific site only. The banner will remain visible.';
                         
                         content.appendChild(icon);
                         content.appendChild(messageEl);
@@ -539,24 +561,24 @@ namespace UMT.UI.ViewModel
                             countdownEl.innerHTML = countdown + ' second' + (countdown !== 1 ? 's' : '');
                             
                             if (countdown <= 0) {{
-                                cleanupAll();
+                                cleanupAll(); // Full cleanup for automatic redirect
                                 window.location.href = redirectUrlFinal;
                             }}
                         }}, 1000);
                         
-                        // Handle escape key
+                        // Handle escape key - only close modal, keep banner
                         var escapeHandler = function(e) {{
                             if (e.key === 'Escape') {{
-                                cancelBtn.click();
+                                cleanupModal(); // Only cleanup modal on escape
                                 document.removeEventListener('keydown', escapeHandler);
                             }}
                         }};
                         document.addEventListener('keydown', escapeHandler);
                         
-                        // Handle navigation
+                        // Handle navigation - full cleanup only
                         var handleNavigation = function() {{
-                            console.log('Navigation detected, cleaning up');
-                            cleanupAll();
+                            console.log('Navigation detected, cleaning up all elements');
+                            cleanupAll(); // Full cleanup on navigation
                             document.removeEventListener('keydown', escapeHandler);
                         }};
                         
