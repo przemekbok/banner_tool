@@ -424,19 +424,50 @@ namespace UMT.UI.ViewModel
                         console.log('Banner state reset - showing banner again after 15-minute cooldown');
                     }}
                     
-                    // === BANNER CREATION ===
+                    // === ENHANCED BANNER CREATION (WIDER & MORE PROMINENT) ===
                     var banner = document.createElement('div');
                     banner.setAttribute('data-migration-banner', 'true');
                     banner.setAttribute('data-execution-key', executionKey);
-                    banner.style.cssText = 'width:100%;background:#ff6b35;color:white;padding:10px;text-align:center;position:relative;z-index:1000;';
-                    banner.innerHTML = '{bannerMessage.Replace("'", "\\'").Replace("\r\n", "<br>").Replace("\n", "<br>").Replace("\r", "<br>")}';
                     
-                    // Insert banner at the top of the page
-                    if (document.body && document.body.firstChild) {{
-                        document.body.insertBefore(banner, document.body.firstChild);
-                    }} else if (document.body) {{
-                        document.body.appendChild(banner);
+                    // Enhanced styling for wider, more prominent banner
+                    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;width:100vw;min-height:60px;background:linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);color:white;padding:20px 40px;text-align:center;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.3);border-bottom:3px solid #e55a2b;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;line-height:1.4;';
+                    
+                    // Create inner content container for better text layout
+                    var innerContent = document.createElement('div');
+                    innerContent.style.cssText = 'max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:center;min-height:20px;';
+                    
+                    // Add icon for more visual impact
+                    var icon = document.createElement('span');
+                    icon.innerHTML = '⚠️&nbsp;&nbsp;';
+                    icon.style.cssText = 'font-size:20px;margin-right:10px;';
+                    
+                    // Message content
+                    var messageContent = document.createElement('span');
+                    messageContent.innerHTML = '{bannerMessage.Replace("'", "\\'").Replace("\r\n", "<br>").Replace("\n", "<br>").Replace("\r", "<br>")}';
+                    
+                    innerContent.appendChild(icon);
+                    innerContent.appendChild(messageContent);
+                    banner.appendChild(innerContent);
+                    
+                    // Adjust page body to accommodate fixed banner
+                    if (document.body) {{
+                        var originalPaddingTop = document.body.style.paddingTop;
+                        var originalMarginTop = document.body.style.marginTop;
+                        
+                        // Add top padding to prevent content overlap
+                        var currentPadding = parseInt(window.getComputedStyle(document.body).paddingTop) || 0;
+                        var currentMargin = parseInt(window.getComputedStyle(document.body).marginTop) || 0;
+                        var bannerHeight = 80; // Approximate banner height with padding
+                        
+                        document.body.style.paddingTop = (currentPadding + bannerHeight) + 'px';
+                        
+                        // Store original values for cleanup
+                        banner.setAttribute('data-original-padding', originalPaddingTop);
+                        banner.setAttribute('data-original-margin', originalMarginTop);
                     }}
+                    
+                    // Insert banner at the very top
+                    document.body.appendChild(banner);
                     
                     // === REDIRECT MODAL ===
                     setTimeout(function() {{
@@ -513,9 +544,22 @@ namespace UMT.UI.ViewModel
                                 modal.parentNode.removeChild(modal);
                             }}
                             
-                            // Remove banner
+                            // Remove banner and restore body padding
                             var bannerToRemove = document.querySelector('[data-migration-banner=""true""]');
                             if (bannerToRemove && bannerToRemove.parentNode) {{
+                                // Restore original body padding
+                                var originalPadding = bannerToRemove.getAttribute('data-original-padding');
+                                var originalMargin = bannerToRemove.getAttribute('data-original-margin');
+                                
+                                if (originalPadding !== null) {{
+                                    document.body.style.paddingTop = originalPadding;
+                                }} else {{
+                                    // Calculate and remove added padding
+                                    var currentPadding = parseInt(window.getComputedStyle(document.body).paddingTop) || 0;
+                                    var newPadding = Math.max(0, currentPadding - 80);
+                                    document.body.style.paddingTop = newPadding + 'px';
+                                }}
+                                
                                 bannerToRemove.parentNode.removeChild(bannerToRemove);
                             }}
                             
