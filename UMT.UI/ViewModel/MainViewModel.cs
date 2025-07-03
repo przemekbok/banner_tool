@@ -383,25 +383,45 @@ namespace UMT.UI.ViewModel
                     
                     console.log('Executing migration banner script with execution key:', executionKey);
                     
-                    // === USER PREFERENCES ===
+                    // === USER PREFERENCES WITH 15-MINUTE RESET ===
                     var siteKey = 'migrationRedirect_' + window.location.hostname + window.location.pathname.replace(/\//g, '_');
                     var disableKey = siteKey + '_disabled';
                     var lastDeclinedKey = siteKey + '_lastDeclined';
                     
                     var isPermanentlyDisabled = localStorage.getItem(disableKey) === 'true';
                     var hasRecentlyDeclined = false;
+                    var stateReset = false;
                     
-                    // Check if user declined recently (within 24 hours)
+                    // Check if user declined recently (within 15 minutes)
                     var lastDeclined = localStorage.getItem(lastDeclinedKey);
                     if (lastDeclined) {{
                         var declinedTime = parseInt(lastDeclined);
-                        var hoursSinceDeclined = (Date.now() - declinedTime) / (1000 * 60 * 60);
-                        hasRecentlyDeclined = hoursSinceDeclined < 24;
+                        var minutesSinceDeclined = (Date.now() - declinedTime) / (1000 * 60);
+                        
+                        if (minutesSinceDeclined >= 15) {{
+                            // 15 minutes have passed - reset the state
+                            localStorage.removeItem(lastDeclinedKey);
+                            console.log('15 minutes elapsed since last decline - resetting banner state');
+                            stateReset = true;
+                        }} else {{
+                            hasRecentlyDeclined = true;
+                            var remainingMinutes = Math.ceil(15 - minutesSinceDeclined);
+                            console.log('Banner suppressed - user declined recently. Will reset in ' + remainingMinutes + ' minutes');
+                        }}
                     }}
                     
-                    if (isPermanentlyDisabled || hasRecentlyDeclined) {{
-                        console.log('Migration banner suppressed due to user preferences');
+                    if (isPermanentlyDisabled) {{
+                        console.log('Migration banner permanently disabled by user preferences');
                         return;
+                    }}
+                    
+                    if (hasRecentlyDeclined && !stateReset) {{
+                        console.log('Migration banner suppressed due to recent user decline (15-minute cooldown)');
+                        return;
+                    }}
+                    
+                    if (stateReset) {{
+                        console.log('Banner state reset - showing banner again after 15-minute cooldown');
                     }}
                     
                     // === BANNER CREATION ===
@@ -514,15 +534,16 @@ namespace UMT.UI.ViewModel
                         }};
                         
                         var cancelBtn = document.createElement('button');
-                        cancelBtn.innerHTML = 'Stay on Current Site';
+                        cancelBtn.innerHTML = 'Stay on Current Site (15 min)';
                         cancelBtn.style.cssText = 'background:#f44336;color:white;border:none;padding:12px 30px;margin:0 10px;border-radius:5px;cursor:pointer;font-size:16px;transition:background 0.3s;';
                         cancelBtn.onmouseover = function() {{ this.style.background = '#da190b'; }};
                         cancelBtn.onmouseout = function() {{ this.style.background = '#f44336'; }};
                         cancelBtn.onclick = function() {{
                             cleanupModal(); // Only cleanup modal, keep banner visible
                             
-                            // Record user choice
+                            // Record user choice with timestamp for 15-minute reset
                             localStorage.setItem(lastDeclinedKey, Date.now().toString());
+                            console.log('User declined redirect - suppressing banner for 15 minutes');
                             
                             var disableCheckbox = document.getElementById('disableRedirect');
                             if (disableCheckbox && disableCheckbox.checked) {{
@@ -540,7 +561,7 @@ namespace UMT.UI.ViewModel
                         
                         var noteEl = document.createElement('p');
                         noteEl.style.cssText = 'font-size:12px;color:#999;margin-top:10px;font-style:italic;';
-                        noteEl.innerHTML = 'This preference is saved for this specific site only. The banner will remain visible.';
+                        noteEl.innerHTML = 'Declining will suppress the redirect popup for 15 minutes. The banner will remain visible.';
                         
                         content.appendChild(icon);
                         content.appendChild(messageEl);
@@ -570,6 +591,8 @@ namespace UMT.UI.ViewModel
                         var escapeHandler = function(e) {{
                             if (e.key === 'Escape') {{
                                 cleanupModal(); // Only cleanup modal on escape
+                                localStorage.setItem(lastDeclinedKey, Date.now().toString());
+                                console.log('User pressed escape - suppressing banner for 15 minutes');
                                 document.removeEventListener('keydown', escapeHandler);
                             }}
                         }};
