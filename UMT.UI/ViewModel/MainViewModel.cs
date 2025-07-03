@@ -606,10 +606,10 @@ namespace UMT.UI.ViewModel
 
             // Initialize properties with default values
             SiteUrl = "https://glob.1sharepoint.roche.com/team/xyz";
-            CountdownSeconds = 5;
+            CountdownSeconds = 15;
             BannerMessage = "Important Notice: Scheduled maintenance will occur on [Date]. Please check the status page for updates.";
             RedirectionUrl = "https://google.com";
-            PopupMessage = "This site is being migrated";
+            PopupMessage = "This site has been migrated. Please update the bookmarks witha a new link.";
             JsCode = GenerateCombinedBannerAndRedirectJs("Site Migration Notice", "https://google.com", "5", "This site is being migrated");
 
             AvailableOptions = Enum.GetValues(typeof(AppMode)).Cast<AppMode>().ToList();
